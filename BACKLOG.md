@@ -23,10 +23,12 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
 - [x] ✅ **sys-04 «partizioni su dischi virtuali» — 11/11 verde.** GPT + mount per UUID che
       sopravvive al reboot, per identità e non per lettera.
 
-## Capstone MVP
+## Capstone MVP — FATTO
 
-- [ ] sys-08 ridotto: fstab rotto **+** modulo/mount concatenati; il check parte da VM spenta.
-      Riusa `banco_boot_target` + oracolo seriale + `banco_rescue_run`, tutti già verdi.
+- [x] ✅ **sys-08 ridotto — 16/16 verde.** Guasti concatenati (fstab che blocca il boot +
+      servizio disabilitato che emerge solo dopo la riparazione); il check parte da una VM
+      **davvero spenta** e finisce con un power-cycle in cui il battito su `/run` (tmpfs)
+      prova che il servizio ha girato sul boot fresco.
 
 ## Banco — capacità ancora da irrobustire
 

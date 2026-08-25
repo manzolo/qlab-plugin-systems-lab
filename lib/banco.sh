@@ -145,6 +145,24 @@ banco_wait_ssh() {
     return 1
 }
 
+# Power the guest OFF (not reboot) and wait until QEMU itself has exited: on
+# guest shutdown a daemonized QEMU quits, which is exactly the "VM spenta" state
+# the capstone check must start from. Returns 0 when the process is gone.
+banco_poweroff_wait() {
+    local ssh_cmd="$1" pidfile="$2" timeout="${3:-90}"
+    local pid waited=0
+    pid="$(cat "$pidfile" 2>/dev/null || true)"
+    $ssh_cmd "sudo poweroff" >/dev/null 2>&1 || true
+    while [[ "$waited" -lt "$timeout" ]]; do
+        [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null && { rm -f "$pidfile"; return 0; }
+        sleep 3; waited=$((waited + 3))
+    done
+    # Last resort: it did not power off by itself.
+    [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
+    rm -f "$pidfile"
+    return 1
+}
+
 # ---- offline rescue -------------------------------------------------------
 
 # Boot a throwaway rescue VM from the base image, with the target's disk attached

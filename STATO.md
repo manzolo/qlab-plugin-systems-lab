@@ -1,6 +1,6 @@
 # STATO — systems-lab
 
-**v0.2 — MVP verde: sys-01, sys-02, sys-04 passano end-to-end su VM vere.**
+**v0.3 — MVP + capstone verdi: sys-01, sys-02, sys-04 e sys-08 passano end-to-end su VM vere.**
 Nato il 2026-08-25 come repo separato (decisione di Andrea), fratello di `cyber-lab`.
 Piano di famiglia: `GemelloDigitale/20_Progetti/linuxlab-percorsi.md`.
 
@@ -35,6 +35,12 @@ vera** e legge il verdetto dal boot. Verde riprodotto — *un verde non riprodot
 - ✅ **sys-04 «partizioni su dischi virtuali» — 11/11.** GPT reale su `/dev/vdb`, filesystem,
   mount **per UUID** in fstab (con `nofail`), riavvio → il mount **torna da solo** ed è il
   device con quell'UUID (identità, non lettera).
+- ✅ **sys-08 capstone «recupera una macchina che non parte» — 16/16.** Guasti **concatenati**:
+  un fstab rotto che blocca il boot nasconde un servizio disabilitato. Il check parte da una
+  macchina **davvero spenta** (QEMU uscito su poweroff): boot a freddo → emergency; soccorso →
+  il boot torna ma il servizio è morto (il guasto B emerge solo ora); cura; power-cycle finale
+  → il servizio ha scritto il battito su `/run` (tmpfs: non può sopravvivere a un reboot,
+  quindi la sua presenza prova che ha girato su QUESTO boot).
 - **Sintassi** di tutti gli script: OK (`bash -n`).
 
 ## Bug trovati solo bootando (la lezione del progetto, dal vivo)
@@ -57,6 +63,12 @@ mostrava — che è *esattamente* ciò che questo lab insegna:
    `99-lab.cfg` che gira per ultimo. È diventato un **punto didattico di sys-01**.
 5. **`dmesg` ristretto** (sys-01): `kernel.dmesg_restrict` → serve `sudo` per leggere la riga
    `Command line` dal log del kernel.
+6. **Non si può maskare un'unità che vive in `/etc/systemd/system`** (sys-08): `mask` deve
+   creare il symlink a `/dev/null` proprio in quel path, che è occupato dal file vero →
+   `systemctl` rifiuta con rc≠0, e sotto `set -e` il test moriva **in silenzio**. Doppia cura:
+   il guasto B è diventato `disable --now` (realistico e funzionante), e ogni semina ora è
+   **auto-diagnostica** — una riga per guasto con `|| true`, seguita da un assert che dice
+   *quale* semina non ha attecchito.
 
 ## Trappole già pagate (dalle misure, da non ripagare)
 

@@ -51,9 +51,9 @@ drive the target through a small bench that keeps the *same* overlay across a po
 | sys-05 | LUKS & layered storage | with the volume closed, the data is unreadable (checked from the rescue system) |
 | sys-06 | Persistent networking | IP/route/DNS come back after a reboot, measured separately |
 | sys-07 | Diagnostics & performance | classify the bottleneck before fixing it |
-| sys-08 | Capstone: recover a machine that won't start | chained faults; the check boots the VM from cold |
+| **sys-08** | **Capstone: recover a machine that won't start** | **chained faults (a boot-blocker hiding a dead service); the check starts from a POWERED-OFF machine and ends with everything alive on a fresh boot** ✅ *green* |
 
-**MVP: sys-01, sys-02, sys-04 are green end-to-end on real VMs.**
+**MVP + capstone: sys-01, sys-02, sys-04 and sys-08 are green end-to-end on real VMs.**
 
 ## Quick start
 
@@ -72,6 +72,7 @@ qlab test systems-lab         # heavy: it power-cycles a real VM
 
 ## Status
 
-**v0.2 — MVP green: sys-01, sys-02, sys-04 pass end-to-end on real VMs.** Each one seeds a
-change, power-cycles a real machine, and reads the verdict from the boot. See `STATO.md` for
-what was proven and the bugs the live runs found; `BACKLOG.md` for what's next.
+**v0.3 — MVP + capstone green: sys-01, sys-02, sys-04, sys-08 pass end-to-end on real VMs.**
+Each one seeds a change, power-cycles a real machine, and reads the verdict from the boot;
+the capstone starts from a machine that is actually powered off. See `STATO.md` for what was
+proven and the bugs the live runs found; `BACKLOG.md` for what's next.
