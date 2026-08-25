@@ -1,83 +1,115 @@
 #!/usr/bin/env bash
-# sys-08 (reduced capstone) — Recover a machine that won't start.
+# sys-08 (FULL capstone) — Recover a machine that won't start.
 #
-# Chained faults, and a check that starts from a POWERED-OFF machine — because
-# "the reboot cannot be simulated by reading files": only a cold boot proves the
-# machine actually comes back. Two faults, deliberately layered:
+# Four chained faults across every layer the track teaches, and a check that
+# starts from a POWERED-OFF machine — "the reboot cannot be simulated by
+# reading files": only cold boots prove the machine actually comes back.
 #
-#   A. a bad /etc/fstab line (no nofail)  -> the boot stops at emergency
-#   B. a disabled service (lab.service)   -> invisible until A is fixed
+#   A. boot     — a bad /etc/fstab line, no nofail   -> the boot stops at emergency
+#   B. storage  — the DATA mount's UUID is wrong (but nofail) -> boot proceeds,
+#                 the filesystem silently does not mount
+#   C. service  — lab.service is disabled, and even enabled it REQUIRES the
+#                 data mount (RequiresMountsFor): it only lives when B is fixed
+#   D. network  — the persistent netplan config carries the WRONG address
 #
-# The point of the chain: fixing the boot is not the end. A recovered machine
-# must also RUN what it is for — and fault B only shows once you are back in.
-# The final proof is one more power-cycle with everything alive on a FRESH boot:
-# the service writes its heartbeat to /run (tmpfs), so the heartbeat cannot
-# survive a reboot — its presence proves the service ran on THIS boot.
+# The layering is the lesson: A hides everything; fixing A reveals B, C, D,
+# each visible only by MEASURING (findmnt, systemctl, ip addr). The final
+# heartbeat is the token read from the REAL data mount and copied to /run
+# (a tmpfs) by the service — one file that proves boot + storage + service in
+# a single measurement, on a fresh power-cycle.
 #
-# Flow (all pieces individually green in sys-01/02/04):
-#   1. build the world: lab.service enabled, heartbeat alive
-#   2. seed A + B, then POWER OFF (QEMU exits: the machine is cold)
-#   3. cold boot -> serial says emergency, SSH down     (A is real)
-#   4. rescue VM repairs fstab offline                  (fix A)
-#   5. cold boot -> login, but the service is dead      (B emerges)
-#   6. unmask + enable                                  (fix B)
-#   7. final power-cycle -> login AND heartbeat alive on a fresh boot
-#   8. teardown to baseline
+# Declared out of scope (honestly): a "required module" fault (nothing on this
+# VM makes a module load-bearing — the module lesson lives in sys-03) and a
+# firewall fault (needs an external prober; the bench has no LAN peer).
 set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; source "$TESTS_DIR/_common.sh"
 
+NOW=$(date +%s)
+TOKEN="capstone${NOW}"
+OCT=$((10 + NOW % 90))
+ADDR="10.99.$OCT.1"; WRONG_ADDR="10.99.$OCT.66"
+LAB_MAC="52:54:00:00:13:01"
+LAN_ARGS=(-netdev "socket,id=lan1,mcast=230.0.0.19:10219" -device "virtio-net-pci,netdev=lan1,mac=$LAB_MAC")
 BAD_UUID="dead0008-dead-dead-dead-deaddead0008"
-BAD_LINE="UUID=$BAD_UUID /srv/capstone ext4 defaults 0 2"
+WRONG_UUID="beef0008-beef-beef-beef-beefbeef0008"
+MP="/srv/dati"
 TLOG="$BENCH_DIR/target.log"; TPID="$BENCH_DIR/target.pid"; TPORT=2288
 SSH="$(banco_ssh "$SSH_KEY" "$TPORT")"
 
-echo ""; echo "${BOLD}sys-08 — capstone: recover a machine that won't start (from cold)${RESET}"; echo ""
+netplan_write() {  # $1 = address to configure
+    $SSH "sudo tee /etc/netplan/60-lab.yaml >/dev/null && sudo chmod 600 /etc/netplan/60-lab.yaml" <<EOF || true
+network:
+  version: 2
+  ethernets:
+    labnic:
+      match:
+        macaddress: "$LAB_MAC"
+      addresses:
+        - $1/24
+EOF
+}
 
-# --- 1. build the world ------------------------------------------------------
-log_info "Booting the target and installing the world (lab.service)..."
+echo ""; echo "${BOLD}sys-08 — FULL capstone: recover a machine that won't start (from cold)${RESET}"; echo ""
+
+# --- 1. build the world ---------------------------------------------------------
+log_info "Booting the target and building the world (data fs + service + network)..."
 : > "$TLOG"
-banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT"
+banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT" "${LAN_ARGS[@]}"
 assert "target answers SSH" banco_wait_ssh "$SSH" 200
-$SSH "sudo tee /etc/systemd/system/lab.service >/dev/null" <<'UNIT' || true
+
+$SSH "sudo sgdisk --zap-all /dev/vdb >/dev/null 2>&1; sudo sgdisk -n 1:0:0 /dev/vdb >/dev/null 2>&1; sudo partprobe /dev/vdb 2>/dev/null; sleep 1; sudo mkfs.ext4 -q -F /dev/vdb1 >/dev/null 2>&1" >/dev/null 2>&1 || true
+UUID=$($SSH "sudo blkid -o value -s UUID /dev/vdb1 2>/dev/null" | tr -d '\r\n ')
+assert "the data filesystem exists and has a UUID" bash -c "[[ -n '$UUID' ]]"
+$SSH "sudo mkdir -p $MP && echo 'UUID=$UUID $MP ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab >/dev/null && sudo mount -a && echo '$TOKEN' | sudo tee $MP/token.txt >/dev/null" >/dev/null 2>&1 || true
+assert "the data mount is live and carries the token" bash -c "$SSH 'grep -q $TOKEN $MP/token.txt'"
+
+$SSH "sudo tee /etc/systemd/system/lab.service >/dev/null" <<UNIT || true
 [Unit]
-Description=Lab heartbeat (proves the machine RUNS, not just boots)
+Description=Lab data service (lives only if the data mount lives)
+RequiresMountsFor=$MP
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'echo alive > /run/lab-heartbeat'
+ExecStart=/bin/sh -c 'cp $MP/token.txt /run/lab-heartbeat'
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 UNIT
 $SSH "sudo systemctl daemon-reload && sudo systemctl enable --now lab.service" >/dev/null 2>&1 || true
-assert "the world is alive: lab.service active, heartbeat written" \
-    bash -c "$SSH 'systemctl is-active lab.service >/dev/null && test -f /run/lab-heartbeat'"
+# is-active photographed right after `enable --now` races the oneshot's own
+# ExecStart (seen live, 2026-08-25): wait for the verdict, don't photograph it.
+ok_svc=1
+for _ in $(seq 1 10); do
+    $SSH "systemctl is-active lab.service >/dev/null && grep -q $TOKEN /run/lab-heartbeat" >/dev/null 2>&1 && { ok_svc=0; break; }
+    sleep 2
+done
+if [[ "$ok_svc" -eq 0 ]]; then log_ok "the service is alive and its heartbeat IS the token from the mount"; PASS_COUNT=$((PASS_COUNT+1)); else log_fail "the service never came alive with the token heartbeat"; FAIL_COUNT=$((FAIL_COUNT+1)); fi
 
-# --- 2. seed the chained faults, then power OFF ------------------------------
-# Each fault is seeded on its own line with `|| true`, and then ASSERTED: if a
-# seed silently fails, the assert says which one — never a silent abort (the
-# first run of this test died exactly like that, on a non-zero rc swallowed by
-# set -e, 2026-08-25).
-log_info "Seeding fault A (bad fstab) + fault B (disabled service), powering off..."
-$SSH "echo '$BAD_LINE' | sudo tee -a /etc/fstab >/dev/null" >/dev/null 2>&1 || true
-assert "fault A landed: the bad line is in fstab" bash -c "$SSH 'grep -q $BAD_UUID /etc/fstab'"
-# Fault B is `disable`, not `mask`: a unit whose file lives in
-# /etc/systemd/system cannot be masked — mask must create the /dev/null symlink
-# at that very path, which is occupied by the real unit file, so systemctl
-# refuses (this rc!=0 is what silently killed the first run, 2026-08-25).
+netplan_write "$ADDR"
+$SSH "sudo netplan apply" >/dev/null 2>&1 || true; sleep 3
+NIC=$($SSH "ip -o link | grep -i '$LAB_MAC' | awk -F': ' '{print \$2}'" 2>/dev/null | tr -d '\r\n ' || true)
+assert "the persistent network is up on the lab NIC ($NIC)" bash -c "$SSH 'ip -o addr show dev $NIC | grep -q $ADDR/'"
+
+# --- 2. seed the four chained faults, then power OFF ------------------------------
+log_info "Seeding the four faults (A boot, B storage, C service, D network), powering off..."
+$SSH "echo 'UUID=$BAD_UUID /srv/blocco ext4 defaults 0 2' | sudo tee -a /etc/fstab >/dev/null" >/dev/null 2>&1 || true
+assert "fault A landed: the boot-blocker line is in fstab" bash -c "$SSH 'grep -q $BAD_UUID /etc/fstab'"
+$SSH "sudo sed -i 's|UUID=$UUID|UUID=$WRONG_UUID|' /etc/fstab" >/dev/null 2>&1 || true
+assert "fault B landed: the data mount now points at a UUID that does not exist" \
+    bash -c "$SSH 'grep -q $WRONG_UUID /etc/fstab'"
 $SSH "sudo systemctl disable --now lab.service" >/dev/null 2>&1 || true
-assert "fault B landed: lab.service is disabled" \
+assert "fault C landed: lab.service is disabled" \
     bash -c "$SSH 'systemctl is-enabled lab.service 2>&1 | grep -q disabled'"
-assert "the machine powered off by itself (QEMU exited: it is COLD)" \
-    banco_poweroff_wait "$SSH" "$TPID" 90
+netplan_write "$WRONG_ADDR"
+assert "fault D landed: the netplan file carries the wrong address" \
+    bash -c "$SSH 'sudo grep -q $WRONG_ADDR/24 /etc/netplan/60-lab.yaml'"
+assert "the machine powered off by itself (COLD)" banco_poweroff_wait "$SSH" "$TPID" 90
 
-# --- 3. cold boot: fault A is real -------------------------------------------
-log_info "Cold boot #1: the broken machine..."
+# --- 3. cold boot #1: fault A hides everything -------------------------------------
+log_info "Cold boot #1: the machine does not come up..."
 : > "$TLOG"
-banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT"
-# 240s for the same reason as sys-02: GRUB + kernel + systemd's 90s device
-# timeout can exceed 150s on a loaded host.
+banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT" "${LAN_ARGS[@]}"
 ok_emerg=1
 for _ in $(seq 1 80); do
     grep -aqE "$BANCO_EMERGENCY_RE" "$TLOG" && { ok_emerg=0; break; }
@@ -87,37 +119,47 @@ if [[ "$ok_emerg" -eq 0 ]]; then log_ok "cold boot stops at emergency (serial)";
 refute "SSH is down on the broken machine" bash -c "$SSH true"
 banco_stop_pid "$TPID"
 
-# --- 4. rescue: fix the boot (fault A) ----------------------------------------
-log_info "Rescue VM repairs fstab offline..."
-repair="sudo mount /dev/vdb1 /mnt && sudo sed -i '/$BAD_UUID/d' /mnt/etc/fstab && echo REMAINING=\$(grep -c $BAD_UUID /mnt/etc/fstab || echo 0) && sudo umount /mnt"
+# --- 4. rescue: fix ONLY the boot blocker -------------------------------------------
+log_info "Rescue: remove the boot blocker (and nothing else — the rest is diagnosed alive)..."
+repair="sudo mount /dev/vdb1 /mnt && sudo sed -i '\\|/srv/blocco|d' /mnt/etc/fstab && echo REMAINING=\$(grep -c $BAD_UUID /mnt/etc/fstab || echo 0) && sudo umount /mnt"
 out="$(banco_rescue_run "$BASE_IMAGE" "$TARGET_OVERLAY" "$SSH_KEY" "$repair" 2299 "$RESCUE_CIDATA" || true)"
-assert_contains "rescue removed the bad fstab line" "$out" "REMAINING=0"
+assert_contains "rescue removed the boot blocker" "$out" "REMAINING=0"
 
-# --- 5. cold boot #2: the boot is back, but the machine is not done ----------
-log_info "Cold boot #2: fault B emerges..."
+# --- 5. cold boot #2: the machine is back, the OTHER faults emerge one by one --------
+log_info "Cold boot #2: measuring what is still wrong..."
 : > "$TLOG"
-banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT"
-assert "the repaired machine reaches SSH again" banco_wait_ssh "$SSH" 200
-refute "but the service is still dead (fault B was hiding behind A)" \
-    bash -c "$SSH 'systemctl is-active lab.service >/dev/null'"
-refute "and no heartbeat was written this boot" bash -c "$SSH 'test -f /run/lab-heartbeat'"
+banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT" "${LAN_ARGS[@]}"
+assert "the machine reaches SSH again" banco_wait_ssh "$SSH" 200
+refute "fault B is visible: the data mount is absent" bash -c "$SSH 'findmnt -rno TARGET $MP'"
+refute "fault C is visible: the service is dead" bash -c "$SSH 'systemctl is-active lab.service >/dev/null'"
+assert "fault D is visible: the lab NIC carries the WRONG address" \
+    bash -c "$SSH 'ip -o addr show dev $NIC | grep -q $WRONG_ADDR/'"
 
-# --- 6. fix fault B ------------------------------------------------------------
-log_info "Re-enabling lab.service..."
+log_info "Curing in order: storage -> service -> network..."
+$SSH "real=\$(sudo blkid -o value -s UUID /dev/vdb1) && sudo sed -i \"s|UUID=$WRONG_UUID|UUID=\$real|\" /etc/fstab && sudo systemctl daemon-reload && sudo mount -a" >/dev/null 2>&1 || true
+assert "storage cured: the data mount is back (UUID read from the disk, not guessed)" \
+    bash -c "$SSH 'findmnt -rno TARGET $MP'"
 $SSH "sudo systemctl enable --now lab.service" >/dev/null 2>&1 || true
-assert "the service is back" bash -c "$SSH 'systemctl is-active lab.service >/dev/null'"
+assert "service cured: alive, heartbeat is the token from the real mount" \
+    bash -c "$SSH 'systemctl is-active lab.service >/dev/null && grep -q $TOKEN /run/lab-heartbeat'"
+netplan_write "$ADDR"
+$SSH "sudo netplan apply" >/dev/null 2>&1 || true; sleep 3
+assert "network cured: the RIGHT address is live" bash -c "$SSH 'ip -o addr show dev $NIC | grep -q $ADDR/'"
 
-# --- 7. the final proof: one more power-cycle, everything alive fresh ---------
-log_info "Final power-cycle: everything must survive a fresh boot..."
+# --- 6. the final proof: one more power-cycle, EVERYTHING comes back by itself -------
+log_info "Final power-cycle: every layer must survive a fresh boot..."
 assert "machine came back on a NEW boot" banco_reboot_wait_newboot "$SSH" 220
-assert "the service ran on THIS boot (heartbeat in /run, a tmpfs)" \
-    bash -c "$SSH 'systemctl is-active lab.service >/dev/null && test -f /run/lab-heartbeat'"
-refute "and the bad fstab line never came back" bash -c "$SSH 'grep -q $BAD_UUID /etc/fstab'"
+assert "storage survives: the data mount returned by itself" bash -c "$SSH 'findmnt -rno TARGET $MP'"
+assert "service survives: it ran on THIS boot (token in /run, a tmpfs)" \
+    bash -c "$SSH 'systemctl is-active lab.service >/dev/null && grep -q $TOKEN /run/lab-heartbeat'"
+assert "network survives: the right address returned by itself" \
+    bash -c "$SSH 'ip -o addr show dev $NIC | grep -q $ADDR/'"
+refute "and no fault left a trace in fstab" bash -c "$SSH 'grep -qE \"$BAD_UUID|$WRONG_UUID\" /etc/fstab'"
 
-# --- 8. teardown to baseline ---------------------------------------------------
-log_info "Tearing down (remove lab.service, leave the overlay at baseline)..."
-$SSH "sudo systemctl disable --now lab.service >/dev/null 2>&1; sudo rm -f /etc/systemd/system/lab.service; sudo systemctl daemon-reload" >/dev/null 2>&1 || true
-refute "lab.service is gone" bash -c "$SSH 'test -f /etc/systemd/system/lab.service'"
+# --- 7. teardown to baseline -----------------------------------------------------------
+log_info "Tearing down (service, netplan, fstab, data disk)..."
+$SSH "sudo systemctl disable --now lab.service >/dev/null 2>&1; sudo rm -f /etc/systemd/system/lab.service /etc/netplan/60-lab.yaml; sudo systemctl daemon-reload; sudo netplan apply >/dev/null 2>&1; sudo umount $MP 2>/dev/null; sudo sed -i '\\|$MP|d' /etc/fstab; sudo sgdisk --zap-all /dev/vdb >/dev/null 2>&1; sudo wipefs -a /dev/vdb >/dev/null 2>&1; sudo rmdir $MP 2>/dev/null" >/dev/null 2>&1 || true
+refute "fstab no longer references $MP" bash -c "$SSH 'grep -q \"$MP\" /etc/fstab'"
 banco_stop_pid "$TPID"
 
 echo ""

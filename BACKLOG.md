@@ -59,7 +59,9 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
       misurati separatamente). Seconda NIC su LAN isolata, match per MAC.
 - [x] ✅ **sys-07 (diagnostica) — 10/10 verde al primo colpo.** Tre classi, classificazione
       dalle misure, cura guidata dalle misure, classificatore muto su macchina sana.
-- [ ] sys-08 pieno (più guasti concatenati: modulo/rete/firewall oltre a fstab+servizio).
+- [x] ✅ **sys-08 pieno — 26/26 verde.** Quattro guasti concatenati (boot/storage/servizio/
+      rete), soccorso chirurgica, diagnosi da vivi, power-cycle finale con ogni strato che
+      torna da solo. **Il percorso non ha più capitoli mancanti.**
 
 ## Superficie/vetrina (quando l'MVP è online)
 

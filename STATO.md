@@ -1,9 +1,8 @@
 # STATO — systems-lab
 
-**v0.6 — il percorso è completo: tutti e otto i capitoli verdi end-to-end su VM vere**
-(sys-08 nella forma ridotta; il capstone pieno è la crescita che resta). Dalla v0.5 il target
-usa l'**immagine cloud standard** (kernel `-virtual`), non la minimal: il suo `linux-kvm` non
-ha dm-crypt (vedi bug 8).
+**v0.7 — il percorso è completo, capstone pieno incluso: tutti e otto i capitoli verdi
+end-to-end su VM vere.** Dalla v0.5 il target usa l'**immagine cloud standard** (kernel
+`-virtual`), non la minimal: il suo `linux-kvm` non ha dm-crypt (vedi bug 8).
 Nato il 2026-08-25 come repo separato (decisione di Andrea), fratello di `cyber-lab`.
 Piano di famiglia: `GemelloDigitale/20_Progetti/linuxlab-percorsi.md`.
 
@@ -62,12 +61,17 @@ vera** e legge il verdetto dal boot. Verde riprodotto — *un verde non riprodot
   **guidata dalle misure** (il pid più affamato, il file più grosso — mai "il nome che
   conosco"), poi di nuovo «sano» misurato. E il classificatore è provato nei due sensi:
   su macchina sana deve tacere.
-- ✅ **sys-08 capstone «recupera una macchina che non parte» — 16/16.** Guasti **concatenati**:
-  un fstab rotto che blocca il boot nasconde un servizio disabilitato. Il check parte da una
-  macchina **davvero spenta** (QEMU uscito su poweroff): boot a freddo → emergency; soccorso →
-  il boot torna ma il servizio è morto (il guasto B emerge solo ora); cura; power-cycle finale
-  → il servizio ha scritto il battito su `/run` (tmpfs: non può sopravvivere a un reboot,
-  quindi la sua presenza prova che ha girato su QUESTO boot).
+- ✅ **sys-08 capstone PIENO «recupera una macchina che non parte» — 26/26.** **Quattro**
+  guasti concatenati su tutti gli strati del percorso: il blocco di boot (fstab, no nofail)
+  **nasconde** un mount dati rotto (UUID sbagliato ma nofail), da cui **dipende** un servizio
+  (`RequiresMountsFor`) che è pure disabilitato, mentre la rete persistente porta l'indirizzo
+  sbagliato. Il check parte da macchina **davvero spenta**; la soccorso ripara **solo** il
+  boot (il resto si diagnostica da vivi, misurando: `findmnt`, `systemctl`, `ip addr`); cure a
+  strati — storage con l'UUID **riletto dal disco**, servizio, rete — e il power-cycle finale
+  prova che ogni strato torna da solo. Il battito è il **token letto dal mount vero** copiato
+  in `/run` (tmpfs): un file solo che prova boot+storage+servizio su un boot fresco.
+  Fuori perimetro, dichiarati: il guasto "modulo necessario" (niente su questa VM rende un
+  modulo portante; la lezione moduli vive in sys-03) e il firewall (servirebbe un peer esterno).
 - **Sintassi** di tutti gli script: OK (`bash -n`).
 
 ## Bug trovati solo bootando (la lezione del progetto, dal vivo)
