@@ -22,8 +22,10 @@ bootloader and no initramfs, so it cannot prove a boot at all.
 
 ## What runs
 
-One VM, `systems-lab-target`: Ubuntu on QEMU/KVM, with an extra empty data disk on
-`/dev/vdb` for the storage chapters. When a chapter breaks the boot, you recover it from a
+One VM, `systems-lab-target`: Ubuntu 22.04 on QEMU/KVM — the **standard** server cloud image
+(kernel `-virtual`, full module set), not the minimal one the other plugins use: the minimal's
+`linux-kvm` kernel ships **no dm-crypt at all**, so the LUKS chapter would be impossible there
+(found live, 2026-08-25). An extra empty data disk sits on `/dev/vdb` for the storage chapters. When a chapter breaks the boot, you recover it from a
 **rescue system** — a throwaway VM booted from the base image with the broken disk attached
 as a second drive. That rescue path is not a workaround; it *is* chapter sys-02.
 
@@ -48,12 +50,12 @@ drive the target through a small bench that keeps the *same* overlay across a po
 | **sys-02** | **Rescue mode & a broken boot** | **a seeded fault stops the boot; after repair the machine reaches login again, and the *cause* is gone** ✅ *green* |
 | **sys-03** | **Kernel, modules, /proc, /sys, sysctl** | **a sysctl value is live, persisted, and still live after a real power-cycle; a module is loaded, seen in lsmod and /sys/module, and unloaded** ✅ *green* |
 | **sys-04** | **Partitions on virtual disks** | **a real GPT partition, mounted by UUID in fstab, comes back by itself after a reboot** ✅ *green* |
-| sys-05 | LUKS & layered storage | with the volume closed, the data is unreadable (checked from the rescue system) |
-| sys-06 | Persistent networking | IP/route/DNS come back after a reboot, measured separately |
+| **sys-05** | **LUKS & layered storage** | **from the attacker's viewpoint (the rescue with the disks in hand): a chmod-600 file on the clear disk IS readable, the LUKS secret appears NOWHERE in the raw bytes — and the owner, with the passphrase, loses nothing** ✅ *green* |
+| **sys-06** | **Persistent networking** | **act 1: an address set with ip(8) EVAPORATES across a power-cycle; act 2: the same address, a route and a DNS server via netplan/systemd-networkd (matched by MAC) come back by themselves — measured separately, live** ✅ *green* |
 | sys-07 | Diagnostics & performance | classify the bottleneck before fixing it |
 | **sys-08** | **Capstone: recover a machine that won't start** | **chained faults (a boot-blocker hiding a dead service); the check starts from a POWERED-OFF machine and ends with everything alive on a fresh boot** ✅ *green* |
 
-**Green end-to-end on real VMs: sys-01, sys-02, sys-03, sys-04 and sys-08.**
+**Green end-to-end on real VMs: sys-01 through sys-06, and sys-08. Only sys-07 remains.**
 
 ## Quick start
 
@@ -72,7 +74,7 @@ qlab test systems-lab         # heavy: it power-cycles a real VM
 
 ## Status
 
-**v0.4 — five chapters green: sys-01, sys-02, sys-03, sys-04, sys-08 pass end-to-end on real
-VMs.** Each one seeds a change, power-cycles a real machine, and reads the verdict from the
-boot; the capstone starts from a machine that is actually powered off. See `STATO.md` for what
-was proven and the bugs the live runs found; `BACKLOG.md` for what's next.
+**v0.5 — seven chapters green: sys-01 through sys-06 plus the sys-08 capstone pass
+end-to-end on real VMs.** Each one seeds a change, power-cycles a real machine, and reads the
+verdict from the boot; the capstone starts from a machine that is actually powered off. See
+`STATO.md` for what was proven and the bugs the live runs found; `BACKLOG.md` for what's next.

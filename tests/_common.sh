@@ -31,11 +31,17 @@ export WORKSPACE_DIR
 # shellcheck source=/dev/null
 source "$PLUGIN_DIR/lib/banco.sh"
 
-BASE_IMAGE="$WORKSPACE_DIR/.qlab/images/ubuntu-22.04-minimal-cloudimg-amd64.img"
+# The STANDARD server image, not the minimal one: systems-lab needs the
+# -virtual kernel (the minimal's linux-kvm has no dm-crypt; see run.sh).
+BASE_IMAGE="$WORKSPACE_DIR/.qlab/images/ubuntu-22.04-server-cloudimg-amd64.img"
 SSH_KEY="$WORKSPACE_DIR/.qlab/ssh/qlab_id_rsa"
 TARGET_OVERLAY="$PLUGIN_DIR/lab/systems-lab-target-disk.qcow2"
 TARGET_DATA="$PLUGIN_DIR/lab/systems-lab-data.qcow2"
 CIDATA_ISO="$PLUGIN_DIR/lab/cidata-target.iso"
+# The rescue's own minimal cidata (user+key, no packages). Falls back to the
+# target's if an old provisioning has not generated it yet.
+RESCUE_CIDATA="$PLUGIN_DIR/lab/cidata-rescue.iso"
+[[ -f "$RESCUE_CIDATA" ]] || RESCUE_CIDATA="$CIDATA_ISO"
 
 for f in "$BASE_IMAGE" "$SSH_KEY" "$TARGET_OVERLAY"; do
     [[ -f "$f" ]] || { echo "ERROR: missing $f. Run 'qlab run systems-lab' once to provision the target, then re-run the tests."; exit 1; }

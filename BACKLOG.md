@@ -10,9 +10,11 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
       esecuzione, mentre questi test guidano i boot da soli e vogliono il target **fermo**.
       Per ora: `bash .qlab/plugins/systems-lab/tests/run_all.sh` dalla copia installata. Da
       decidere: la guardia salta il check per systems-lab, o il runner fa `qlab run`+`stop`.
-- [ ] **Ordine dei dischi nella soccorso.** `test_02` oggi riesce perché `banco_rescue_run`
-      attacca solo l'overlay (disco rotto = `/dev/vdb`). Quando la soccorso monterà anche il
-      disco dati, ancorare per label/serial, non per lettera — trappola PARTUUID applicata.
+- [x] ✅ **Ordine dei dischi nella soccorso — risolto per costruzione (2026-08-25).** La
+      trappola PARTUUID ha morso davvero (la soccorso ha montato la root del target, vedi
+      STATO bug 13): ora la soccorso **boota da sola** e i dischi del paziente arrivano
+      **dopo, via hotplug QMP** — target sempre `/dev/vdb`, disco dati sempre `/dev/vdc`,
+      per ordine di aggancio e senza ambiguità di root.
 
 ## MVP — FATTO
 
@@ -32,6 +34,11 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
 
 ## Banco — capacità ancora da irrobustire
 
+- [ ] **Teardown anche su abort**: un test che muore a metà lascia l'overlay sporco (es. fstab
+      rotto seminato e mai riparato) e avvelena i test successivi — successo il 2026-08-25
+      quando il timeout della soccorso ha abortito sys-02. Mitigato (chiamate alla soccorso
+      guardate, timeout 300s); la cura vera è un trap per-test che ripristina i semi noti.
+
 - [ ] **Guastatore col seme**: oggi `test_02` inietta un guasto fisso. Serve un seme che
       parametrizzi *quale* riga/UUID/parametro rompere, e un check che pretenda il valore del
       seme (l'anti-trucco di famiglia portato sul boot).
@@ -45,9 +52,12 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
 
 - [x] ✅ **sys-03 (kernel/moduli/sysctl persistente) — 13/13 verde.** Sysctl dal seme vivo
       dopo power-cycle; giro moduli con scoperta dinamica (il kernel -kvm ha i .ko).
-- [ ] sys-05 (LUKS: dati illeggibili a volume chiuso, verificato dalla soccorso — cryptsetup
-      è già nel provisioning), sys-06 (rete persistente con systemd-networkd), sys-07
-      (diagnostica: classificare prima di curare), sys-08 pieno.
+- [x] ✅ **sys-05 (LUKS) — 14/14 verde.** Attaccante (soccorso) vs proprietario (passphrase);
+      controllo positivo sulla sonda; ha imposto il passaggio all'immagine standard.
+- [x] ✅ **sys-06 (rete persistente) — 12/12 verde alla prima uscita completa.** Atto 1: lo
+      stato di ip(8) evapora; atto 2: netplan/networkd torna da solo (indirizzo, route, DNS
+      misurati separatamente). Seconda NIC su LAN isolata, match per MAC.
+- [ ] sys-07 (diagnostica: classificare prima di curare), sys-08 pieno.
 
 ## Superficie/vetrina (quando l'MVP è online)
 

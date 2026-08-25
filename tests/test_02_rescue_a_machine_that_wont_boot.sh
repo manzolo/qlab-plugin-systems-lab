@@ -30,12 +30,16 @@ log_info "Booting the target (clean baseline)..."
 : > "$TLOG"
 banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT"
 assert "target answers SSH from a clean boot" banco_wait_ssh "$SSH" 200
-if grep -aqE "$BANCO_LOGIN_RE" "$TLOG"; then log_ok "clean boot reaches login on the serial console"; PASS_COUNT=$((PASS_COUNT+1)); else log_fail "clean boot did not complete on the serial"; FAIL_COUNT=$((FAIL_COUNT+1)); fi
+# SSH can answer seconds BEFORE getty prints the login prompt on the serial
+# (found live on the -virtual kernel, 2026-08-25): the serial verdict must be
+# waited for, never photographed.
+ok_login=1; for _ in $(seq 1 20); do grep -aqE "$BANCO_LOGIN_RE" "$TLOG" && { ok_login=0; break; }; sleep 3; done
+if [[ "$ok_login" -eq 0 ]]; then log_ok "clean boot reaches login on the serial console"; PASS_COUNT=$((PASS_COUNT+1)); else log_fail "clean boot did not complete on the serial"; FAIL_COUNT=$((FAIL_COUNT+1)); fi
 refute "baseline fstab has no seeded fault" bash -c "$SSH 'grep -q $BAD_UUID /etc/fstab'"
 
 # --- 2. seed the fault + power-cycle ----------------------------------------
 log_info "Seeding a bad fstab line and rebooting the guest..."
-$SSH "echo '$BAD_LINE' | sudo tee -a /etc/fstab >/dev/null" >/dev/null 2>&1
+$SSH "echo '$BAD_LINE' | sudo tee -a /etc/fstab >/dev/null" >/dev/null 2>&1 || true
 assert "the fault is now in fstab" bash -c "$SSH 'grep -q $BAD_UUID /etc/fstab'"
 # Mark where the pre-reboot log ends, so we read the NEXT boot's verdict.
 before_lines=$(wc -l < "$TLOG")
@@ -56,7 +60,7 @@ banco_stop_pid "$TPID"
 # --- 4. repair from a rescue system -----------------------------------------
 log_info "Booting a rescue system and repairing the disk offline..."
 repair="sudo mount /dev/vdb1 /mnt && sudo sed -i '/$BAD_UUID/d' /mnt/etc/fstab && echo REMAINING=\$(grep -c $BAD_UUID /mnt/etc/fstab || echo 0) && sudo umount /mnt"
-out="$(banco_rescue_run "$BASE_IMAGE" "$TARGET_OVERLAY" "$SSH_KEY" "$repair" 2299 "$CIDATA_ISO")"
+out="$(banco_rescue_run "$BASE_IMAGE" "$TARGET_OVERLAY" "$SSH_KEY" "$repair" 2299 "$RESCUE_CIDATA" || true)"
 assert_contains "rescue mounted the disk and removed the bad line" "$out" "REMAINING=0"
 
 # --- 5. boot the SAME repaired overlay --------------------------------------
@@ -64,7 +68,8 @@ log_info "Booting the repaired target (same overlay, not a fresh one)..."
 : > "$TLOG"
 banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT"
 assert "the repaired machine answers SSH again" banco_wait_ssh "$SSH" 200
-if grep -aqE "$BANCO_LOGIN_RE" "$TLOG"; then log_ok "the repaired boot reaches login on the serial"; PASS_COUNT=$((PASS_COUNT+1)); else log_fail "the repaired boot did not complete on the serial"; FAIL_COUNT=$((FAIL_COUNT+1)); fi
+ok_login=1; for _ in $(seq 1 20); do grep -aqE "$BANCO_LOGIN_RE" "$TLOG" && { ok_login=0; break; }; sleep 3; done
+if [[ "$ok_login" -eq 0 ]]; then log_ok "the repaired boot reaches login on the serial"; PASS_COUNT=$((PASS_COUNT+1)); else log_fail "the repaired boot did not complete on the serial"; FAIL_COUNT=$((FAIL_COUNT+1)); fi
 
 # --- 6. the cause is gone, not just the symptom -----------------------------
 refute "the CAUSE is gone: no bad line survives in fstab" bash -c "$SSH 'grep -q $BAD_UUID /etc/fstab'"

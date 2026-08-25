@@ -40,8 +40,13 @@ done
 WORKSPACE_DIR="${WORKSPACE_DIR:-.qlab}"
 LAB_DIR="lab"
 IMAGE_DIR="$WORKSPACE_DIR/images"
-CLOUD_IMAGE_URL=$(get_config CLOUD_IMAGE_URL "https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img")
-CLOUD_IMAGE_FILE="$IMAGE_DIR/ubuntu-22.04-minimal-cloudimg-amd64.img"
+# NOT the minimal image the other plugins use: its linux-kvm kernel ships no
+# dm-crypt at all ("crypt: unknown target type", no xts either — found live,
+# 2026-08-25), so sys-05 (LUKS) is impossible there. The standard server cloud
+# image boots the -virtual kernel with the full module set. Bigger download,
+# once.
+CLOUD_IMAGE_URL=$(get_config SYSTEMS_CLOUD_IMAGE_URL "https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img")
+CLOUD_IMAGE_FILE="$IMAGE_DIR/ubuntu-22.04-server-cloudimg-amd64.img"
 MEMORY="${QLAB_MEMORY:-$(get_config DEFAULT_MEMORY 1024)}"
 DATA_DISK="$LAB_DIR/systems-lab-data.qcow2"
 
@@ -84,6 +89,17 @@ packages:
   - nano
   - gdisk
   - cryptsetup
+write_files:
+  # After an unclean shutdown GRUB's recordfail logic sets timeout=-1 and waits
+  # at the menu FOREVER on a headless machine. The bench power-cuts on purpose
+  # (that is what a power-cycle is), so cap the wait. Found live on 2026-08-25:
+  # on the standard image every boot after a SIGTERM kill hung at GRUB.
+  - path: /etc/default/grub.d/90-lab-recordfail.cfg
+    content: |
+      GRUB_RECORDFAIL_TIMEOUT=3
+      GRUB_TIMEOUT=3
+runcmd:
+  - [ update-grub ]
 USERDATA
 
 cat > "$LAB_DIR/meta-data-target" <<META
@@ -99,6 +115,34 @@ CIDATA_TARGET="$LAB_DIR/cidata-target.iso"
 genisoimage -output "$CIDATA_TARGET" -volid cidata -joliet -rock \
     -graft-points "user-data=$LAB_DIR/user-data-target" "meta-data=$LAB_DIR/meta-data-target" 2>/dev/null
 success "Cloud-init ISO ready."
+
+# A SECOND, minimal cloud-init for the rescue system: user + key and nothing
+# else. The rescue exists to mount a disk and edit a file — giving it the
+# target's cidata made its first boot install packages over the network and run
+# update-grub, which is slow, non-deterministic, and once blew the bench's
+# timeout mid-suite (2026-08-25). A rescue must be boring and fast.
+cat > "$LAB_DIR/user-data-rescue" <<'RESCUEDATA'
+#cloud-config
+hostname: systems-rescue
+users:
+  - name: labuser
+    plain_text_passwd: labpass
+    lock_passwd: false
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - "__QLAB_SSH_PUB_KEY__"
+ssh_pwauth: true
+package_update: false
+RESCUEDATA
+sed -i "s|__QLAB_SSH_PUB_KEY__|${QLAB_SSH_PUB_KEY:-}|g" "$LAB_DIR/user-data-rescue"
+cat > "$LAB_DIR/meta-data-rescue" <<META
+instance-id: systems-rescue
+local-hostname: systems-rescue
+META
+genisoimage -output "$LAB_DIR/cidata-rescue.iso" -volid cidata -joliet -rock \
+    -graft-points "user-data=$LAB_DIR/user-data-rescue" "meta-data=$LAB_DIR/meta-data-rescue" 2>/dev/null
+success "Rescue cloud-init ISO ready (minimal: user + key only)."
 echo ""
 
 # =============================================

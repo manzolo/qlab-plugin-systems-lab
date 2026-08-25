@@ -1,6 +1,8 @@
 # STATO — systems-lab
 
-**v0.4 — cinque capitoli verdi end-to-end su VM vere: sys-01, sys-02, sys-03, sys-04, sys-08.**
+**v0.5 — sette capitoli verdi end-to-end su VM vere: sys-01…sys-06 e il capstone sys-08.
+Manca solo sys-07.** Dalla v0.5 il target usa l'**immagine cloud standard** (kernel
+`-virtual`), non la minimal: il suo `linux-kvm` non ha dm-crypt (vedi bug 8).
 Nato il 2026-08-25 come repo separato (decisione di Andrea), fratello di `cyber-lab`.
 Piano di famiglia: `GemelloDigitale/20_Progetti/linuxlab-percorsi.md`.
 
@@ -41,6 +43,18 @@ vera** e legge il verdetto dal boot. Verde riprodotto — *un verde non riprodot
   E il giro moduli regge: il kernel `-kvm` **ha** moduli caricabili (trovato `affs`
   dinamicamente, caricato, visto in `lsmod` e `/sys/module`, `modinfo`, scaricato) — il
   dubbio "kernel minimale senza .ko" era infondato, misurato e chiuso.
+- ✅ **sys-05 «LUKS e storage stratificato» — 14/14.** La scena intera dal punto di vista
+  giusto, **la soccorso = l'attaccante col disco in mano**: il file in chiaro `chmod 600` sul
+  disco di root **si legge** (i permessi non sono una difesa lì); la partizione si dichiara
+  `crypto_LUKS`; il segreto **non compare da nessuna parte** nei byte grezzi del disco dati —
+  e la sonda **prima dimostra di saper trovare il plaintext** sul disco in chiaro (lo zero ha
+  due letture, si separano provando il filtro). Poi il lato del proprietario: passphrase →
+  `open --key-file -` → il segreto è intatto dopo close + power-cycle.
+- ✅ **sys-06 «rete persistente» — 12/12, verde alla prima uscita completa.** Seconda NIC su
+  LAN isolata (match per **MAC**, identità e non nome), e i due atti che *sono* la lezione:
+  l'indirizzo messo con `ip addr add` **evapora** al power-cycle; lo stesso indirizzo + route
+  statica + DNS via **netplan/systemd-networkd** tornano da soli — e si misurano
+  **separatamente** dal sistema vivo (`ip addr`, `ip route`, `resolvectl`), mai dal file.
 - ✅ **sys-08 capstone «recupera una macchina che non parte» — 16/16.** Guasti **concatenati**:
   un fstab rotto che blocca il boot nasconde un servizio disabilitato. Il check parte da una
   macchina **davvero spenta** (QEMU uscito su poweroff): boot a freddo → emergency; soccorso →
@@ -75,6 +89,49 @@ mostrava — che è *esattamente* ciò che questo lab insegna:
    il guasto B è diventato `disable --now` (realistico e funzionante), e ogni semina ora è
    **auto-diagnostica** — una riga per guasto con `|| true`, seguita da un assert che dice
    *quale* semina non ha attecchito.
+7. **`cryptsetup open` non prende la chiave come posizionale** (sys-05): il `-` finale vale
+   per `luksFormat`; `open` vuole `--key-file -`. Sbagliarlo = il volume non si apre mai, e
+   il primo run aveva anche un **verde vacuo**: «il segreto non è nei byte grezzi» passava
+   perché il segreto non era mai stato scritto. Cura doppia: stderr di cryptsetup catturato
+   e stampato (l'errore si nomina da solo), e la sonda ha un **controllo positivo** — deve
+   prima trovare il plaintext sul disco in chiaro, solo allora il suo zero vale.
+8. **Il kernel `linux-kvm` della minimal non ha dm-crypt** (sys-05): `modprobe dm_crypt` →
+   *not found*, dmesg dice `crypt: unknown target type`, e niente xts (`cryptsetup benchmark`
+   boccia tutto). Nessun pacchetto lo aggiunge su quel flavor: la cura è l'**immagine cloud
+   standard** (kernel `-virtual`), dichiarata nel run.sh — e l'intera suite è stata rifatta
+   sul kernel nuovo, perché la base era cambiata sotto tutti i capitoli.
+9. **Il recordfail di GRUB blocca per sempre una macchina headless dopo un taglio di
+   corrente** (suite sull'immagine standard): dopo uno shutdown non pulito GRUB mette
+   `timeout=-1` e aspetta una tastiera che non esiste — ogni boot successivo a un kill del
+   banco si impiantava al menu. Cura nel provisioning: `GRUB_RECORDFAIL_TIMEOUT=3` in un
+   drop-in `grub.d`. È materia da capitolo: un server vero non deve piantarsi al GRUB dopo
+   un black-out. (La minimal non mostrava il problema.)
+10. **SSH risponde secondi PRIMA che getty stampi `login:` sulla seriale** (sys-02 sul kernel
+    -virtual): un check che fotografa il log seriale subito dopo il wait su SSH corre contro
+    getty e perde. Il verdetto seriale si **aspetta**, non si fotografa.
+11. **«Esiste su disco» non è «si carica»** (sys-03 sul kernel generic): il primo `.ko`
+    trovato era `ubuntu-host`, che in QEMU rifiuta di caricarsi. La scelta del modulo ora
+    **prova a caricare** i candidati finché uno va (prima `dummy`, che è software puro).
+    E una lezione di sessione, pagata due volte: **le sonde inline girano in zsh, dove
+    `$cmd` non fa word-splitting** — una macchina viva dichiarata morta dal client rotto.
+    Le sonde si scrivono in file bash, sempre.
+12. **Una soccorso che installa pacchetti è una soccorso inaffidabile**: usava la cidata del
+    target (apt di 4 pacchetti via SLIRP + update-grub al primo boot) e una volta ha sforato
+    il timeout del banco, abortendo sys-02 e avvelenando i test a valle con l'fstab mai
+    riparato. Doppia cura: **cidata minimale dedicata** (utente+chiave e basta — una soccorso
+    dev'essere noiosa e rapida) e il banco che al fallimento **conserva il log seriale su
+    stderr** invece di cancellare le prove col tmpdir.
+13. **La trappola PARTUUID ha morso davvero** (annunciata dal piano il giorno stesso):
+    soccorso e target derivano dalla stessa base → root gemelle → con entrambi i dischi
+    presenti al boot il kernel sceglie la root per **ordine di scansione**, e una volta ha
+    montato come root della soccorso **il disco avvelenato del target**, finendo lei stessa
+    in emergency. Cura definitiva: **la soccorso boota da sola e il paziente arriva dopo** —
+    hotplug del disco via QMP (`drive_add`+`device_add`) a macchina su. Chiude anche la voce
+    "ordine dei dischi nella soccorso" del BACKLOG.
+14. **Un QEMU morente tiene ancora il write-lock sul disco**: il percorso di fallimento della
+    soccorso usava un `kill` secco senza attesa, e il boot successivo trovava
+    `Failed to get "write" lock`. Ogni uscita ora passa da `banco_stop_pid`
+    (attesa + SIGKILL + pidfile rimosso).
 
 ## Trappole già pagate (dalle misure, da non ripagare)
 

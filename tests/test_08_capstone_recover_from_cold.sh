@@ -38,7 +38,7 @@ log_info "Booting the target and installing the world (lab.service)..."
 : > "$TLOG"
 banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT"
 assert "target answers SSH" banco_wait_ssh "$SSH" 200
-$SSH "sudo tee /etc/systemd/system/lab.service >/dev/null" <<'UNIT'
+$SSH "sudo tee /etc/systemd/system/lab.service >/dev/null" <<'UNIT' || true
 [Unit]
 Description=Lab heartbeat (proves the machine RUNS, not just boots)
 
@@ -50,7 +50,7 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 UNIT
-$SSH "sudo systemctl daemon-reload && sudo systemctl enable --now lab.service" >/dev/null 2>&1
+$SSH "sudo systemctl daemon-reload && sudo systemctl enable --now lab.service" >/dev/null 2>&1 || true
 assert "the world is alive: lab.service active, heartbeat written" \
     bash -c "$SSH 'systemctl is-active lab.service >/dev/null && test -f /run/lab-heartbeat'"
 
@@ -88,7 +88,7 @@ banco_stop_pid "$TPID"
 # --- 4. rescue: fix the boot (fault A) ----------------------------------------
 log_info "Rescue VM repairs fstab offline..."
 repair="sudo mount /dev/vdb1 /mnt && sudo sed -i '/$BAD_UUID/d' /mnt/etc/fstab && echo REMAINING=\$(grep -c $BAD_UUID /mnt/etc/fstab || echo 0) && sudo umount /mnt"
-out="$(banco_rescue_run "$BASE_IMAGE" "$TARGET_OVERLAY" "$SSH_KEY" "$repair" 2299 "$CIDATA_ISO")"
+out="$(banco_rescue_run "$BASE_IMAGE" "$TARGET_OVERLAY" "$SSH_KEY" "$repair" 2299 "$RESCUE_CIDATA" || true)"
 assert_contains "rescue removed the bad fstab line" "$out" "REMAINING=0"
 
 # --- 5. cold boot #2: the boot is back, but the machine is not done ----------

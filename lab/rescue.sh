@@ -16,7 +16,7 @@ while [[ "$d" != "/" && ! -d "$d/.qlab" ]]; do d="$(dirname "$d")"; done
 [[ -d "$d/.qlab" ]] || { echo "No .qlab workspace found. Run 'qlab run systems-lab' first."; exit 1; }
 WS="$d"
 
-BASE="$WS/.qlab/images/ubuntu-22.04-minimal-cloudimg-amd64.img"
+BASE="$WS/.qlab/images/ubuntu-22.04-server-cloudimg-amd64.img"
 TARGET_DISK="$HERE/systems-lab-target-disk.qcow2"
 KEY="$WS/.qlab/ssh/qlab_id_rsa"
 PORT="${RESCUE_PORT:-2299}"
@@ -34,7 +34,8 @@ qemu-img create -f qcow2 -b "$BASE" -F qcow2 "$RESCUE" >/dev/null
 # The rescue boots from the plain base image: it needs its OWN cloud-init seed to
 # create labuser + install the workspace key, or sshd never comes up. Reuse the
 # target's cidata (it only configures the OS user/key).
-CIDATA="$HERE/cidata-target.iso"
+CIDATA="$HERE/cidata-rescue.iso"
+[[ -f "$CIDATA" ]] || CIDATA="$HERE/cidata-target.iso"
 CD=()
 [[ -f "$CIDATA" ]] && CD=(-cdrom "$CIDATA")
 

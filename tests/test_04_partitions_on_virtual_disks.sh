@@ -32,7 +32,7 @@ refute "nothing is mounted at $MP yet" bash -c "$SSH 'findmnt -rno TARGET $MP'"
 
 # --- 1. real GPT partition + filesystem -------------------------------------
 log_info "Creating a GPT partition and an ext4 filesystem on /dev/vdb..."
-$SSH "sudo sgdisk --zap-all /dev/vdb >/dev/null 2>&1; sudo sgdisk -n 1:0:0 -t 1:8300 /dev/vdb >/dev/null 2>&1; sudo partprobe /dev/vdb 2>/dev/null; sleep 1; sudo mkfs.ext4 -q -F /dev/vdb1 >/dev/null 2>&1" >/dev/null 2>&1
+$SSH "sudo sgdisk --zap-all /dev/vdb >/dev/null 2>&1; sudo sgdisk -n 1:0:0 -t 1:8300 /dev/vdb >/dev/null 2>&1; sudo partprobe /dev/vdb 2>/dev/null; sleep 1; sudo mkfs.ext4 -q -F /dev/vdb1 >/dev/null 2>&1" >/dev/null 2>&1 || true
 pt=$($SSH "sudo blkid -o value -s PTTYPE /dev/vdb 2>/dev/null" || true)
 assert_contains "the disk carries a real GPT partition table" "$pt" "gpt"
 UUID=$($SSH "sudo blkid -o value -s UUID /dev/vdb1 2>/dev/null" | tr -d '\r\n ')
@@ -40,7 +40,7 @@ assert "the new filesystem has a UUID" bash -c "[[ -n '$UUID' ]]"
 
 # --- 2. mount by UUID via fstab (nofail) ------------------------------------
 log_info "Mounting by UUID via /etc/fstab (nofail), then mount -a..."
-$SSH "sudo mkdir -p $MP && echo 'UUID=$UUID $MP ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab >/dev/null && sudo mount -a" >/dev/null 2>&1
+$SSH "sudo mkdir -p $MP && echo 'UUID=$UUID $MP ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab >/dev/null && sudo mount -a" >/dev/null 2>&1 || true
 assert "the fstab line uses the UUID, not /dev/vdb1" bash -c "$SSH 'grep -q \"UUID=$UUID\" /etc/fstab'"
 assert "it is mounted now" bash -c "$SSH 'findmnt -rno TARGET $MP'"
 

@@ -101,10 +101,14 @@ banco_reboot_wait_newboot() {
 # the SAME overlay to survive a power-cycle, so it drives qemu directly. This is
 # the "start that does not recreate the disk" the measures said Systems needs.
 #
-# banco_boot_target <overlay> <data_disk> <log> <pidfile> [ssh_port]
+# banco_boot_target <overlay> <data_disk> <log> <pidfile> [ssh_port] [extra qemu args...]
 # Boots the target standalone, SSH forwarded, serial to <log>. Non-blocking.
+# Anything after the port is passed to qemu verbatim (e.g. a second NIC on an
+# isolated mcast LAN for the networking chapter).
 banco_boot_target() {
     local overlay="$1" data="$2" log="$3" pidfile="$4" port="${5:-2288}"
+    shift 5 2>/dev/null || shift $#
+    local extra=("$@")
     local kvm=()
     [[ -e /dev/kvm && -w /dev/kvm ]] && kvm=(-enable-kvm -cpu host)
     local data_arg=()
@@ -114,7 +118,8 @@ banco_boot_target() {
         -drive "file=$overlay,format=qcow2,if=virtio" \
         "${data_arg[@]}" \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${port}-:22" \
-        -device virtio-net-pci,netdev=net0 "${kvm[@]}"
+        -device virtio-net-pci,netdev=net0 \
+        "${extra[@]+"${extra[@]}"}" "${kvm[@]}"
 }
 
 # Stop a bench-booted VM by pidfile (best effort, then force).
@@ -163,6 +168,36 @@ banco_poweroff_wait() {
     return 1
 }
 
+# ---- QMP: talk to a running QEMU ------------------------------------------
+#
+# Sends one HMP command through the QMP unix socket. Used to hot-plug the
+# target's disk into the rescue AFTER it has booted — because rescue and target
+# derive from the same base image and share PARTUUIDs, and if both disks are
+# present at boot the kernel picks its root by SCAN ORDER, not by merit: on
+# 2026-08-25 the rescue mounted the TARGET's poisoned root as its own and
+# landed in emergency mode. A rescue must boot alone; the patient arrives later.
+_banco_qmp_hmp() {
+    local sock="$1" cmdline="$2"
+    python3 - "$sock" "$cmdline" <<'PY'
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); f = s.makefile('rw')
+json.loads(f.readline())  # greeting
+def ex(o):
+    f.write(json.dumps(o) + '\n'); f.flush()
+    while True:
+        r = json.loads(f.readline())
+        if 'return' in r or 'error' in r:
+            return r
+ex({"execute": "qmp_capabilities"})
+r = ex({"execute": "human-monitor-command", "arguments": {"command-line": sys.argv[2]}})
+out = r.get('return', r)
+if isinstance(out, str) and out.strip():
+    print(out.strip())
+if 'error' in r:
+    sys.exit(1)
+PY
+}
+
 # ---- offline rescue -------------------------------------------------------
 
 # Boot a throwaway rescue VM from the base image, with the target's disk attached
@@ -170,7 +205,11 @@ banco_poweroff_wait() {
 # This is capability #3 and #4 at once, and it is literally what a person does in
 # chapter sys-02.
 #
-#   banco_rescue_run <base_image> <target_disk> <ssh_key> <repair_cmd> [port] [cidata_iso]
+#   banco_rescue_run <base_image> <target_disk> <ssh_key> <repair_cmd> [port] [cidata_iso] [extra_disk]
+#
+# [extra_disk] optionally attaches a further disk (e.g. the target's data disk)
+# as /dev/vdc in the rescue — needed when the inspection concerns data that does
+# not live on the root disk (sys-05: is the LUKS volume really unreadable?).
 #
 # The <repair_cmd> runs inside the rescue VM as a shell string. The target disk
 # appears there as /dev/vdb (the rescue root is /dev/vda). A repair typically
@@ -187,7 +226,7 @@ banco_poweroff_wait() {
 # on one qcow2 corrupt it. The caller (a test) is responsible for the order.
 banco_rescue_run() {
     local base_image="$1" target_disk="$2" ssh_key="$3" repair_cmd="$4"
-    local port="${5:-2299}" cidata="${6:-}"
+    local port="${5:-2299}" cidata="${6:-}" extra_disk="${7:-}"
     local work; work="$(mktemp -d)"
     local rescue_disk="$work/rescue.qcow2" rescue_log="$work/rescue.log"
     local rescue_pid="$work/rescue.pid"
@@ -199,10 +238,12 @@ banco_rescue_run() {
     local cd_arg=()
     [[ -n "$cidata" && -f "$cidata" ]] && cd_arg=(-cdrom "$cidata")
 
+    # The rescue boots ALONE (see _banco_qmp_hmp for why); the target disk and
+    # the optional extra disk are hot-plugged over QMP once it is up.
     qemu-system-x86_64 -m 1024 -smp 1 -display none -monitor none -daemonize \
         -pidfile "$rescue_pid" -serial "file:$rescue_log" \
+        -qmp "unix:$work/qmp.sock,server,nowait" \
         -drive "file=$rescue_disk,format=qcow2,if=virtio" \
-        -drive "file=$target_disk,format=qcow2,if=virtio" \
         "${cd_arg[@]}" \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${port}-:22" \
         -device virtio-net-pci,netdev=net0 \
@@ -211,16 +252,48 @@ banco_rescue_run() {
     local ssh_opts="-i $ssh_key -p $port -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 -o IdentitiesOnly=yes"
 
-    # Wait for the rescue system to answer.
+    # Wait for the rescue system to answer. 300s, not less: on the standard
+    # image the rescue's first boot installs packages over SLIRP and runs
+    # update-grub, and 180s was not enough (found live, 2026-08-25 — the
+    # timeout aborted sys-02 mid-rescue and poisoned the suite).
     local up=1 waited=0
-    while [[ "$waited" -lt 180 ]]; do
+    while [[ "$waited" -lt 300 ]]; do
         # shellcheck disable=SC2086
         if ssh $ssh_opts labuser@127.0.0.1 true >/dev/null 2>&1; then up=0; break; fi
         sleep 4; waited=$((waited + 4))
     done
     if [[ "$up" -ne 0 ]]; then
-        [[ -f "$rescue_pid" ]] && kill "$(cat "$rescue_pid")" 2>/dev/null
+        # NEVER destroy the evidence: the rescue's serial log says why it did
+        # not come up (a failure erased silently here cost a whole debugging
+        # round on 2026-08-25). stderr, so command substitution doesn't eat it.
+        {
+            echo "banco_rescue_run: rescue did not answer SSH; last serial lines:"
+            tail -c 2000 "$rescue_log" 2>/dev/null | strings | tail -15
+        } >&2
+        banco_stop_pid "$rescue_pid"
         rm -rf "$work"; return 1
+    fi
+
+    # Hot-plug the patient(s): the target disk becomes /dev/vdb, the optional
+    # extra disk /dev/vdc. Done only NOW, with the rescue's root already
+    # mounted, so the PARTUUID twins can no longer confuse the kernel.
+    _banco_qmp_hmp "$work/qmp.sock" "drive_add 0 if=none,file=$target_disk,format=qcow2,id=banco_tgt" >&2 || true
+    _banco_qmp_hmp "$work/qmp.sock" "device_add virtio-blk-pci,drive=banco_tgt,id=banco_tgt_dev" >&2 || true
+    local want_dev="test -b /dev/vdb"
+    if [[ -n "$extra_disk" && -f "$extra_disk" ]]; then
+        _banco_qmp_hmp "$work/qmp.sock" "drive_add 0 if=none,file=$extra_disk,format=qcow2,id=banco_extra" >&2 || true
+        _banco_qmp_hmp "$work/qmp.sock" "device_add virtio-blk-pci,drive=banco_extra,id=banco_extra_dev" >&2 || true
+        want_dev="test -b /dev/vdb && test -b /dev/vdc"
+    fi
+    local seen=1 w2=0
+    while [[ "$w2" -lt 30 ]]; do
+        # shellcheck disable=SC2086
+        if ssh $ssh_opts labuser@127.0.0.1 "$want_dev" >/dev/null 2>&1; then seen=0; break; fi
+        sleep 2; w2=$((w2 + 2))
+    done
+    if [[ "$seen" -ne 0 ]]; then
+        echo "banco_rescue_run: hot-plugged disk(s) never appeared in the rescue" >&2
+        banco_stop_pid "$rescue_pid"; rm -rf "$work"; return 1
     fi
 
     # Run the repair; capture its output for the caller's log.
@@ -232,12 +305,15 @@ banco_rescue_run() {
     # Shut the rescue down cleanly (best effort), then make sure it is gone.
     # shellcheck disable=SC2086
     ssh $ssh_opts labuser@127.0.0.1 "sudo poweroff" >/dev/null 2>&1 || true
-    local gone=1 g=0
+    local g=0
     while [[ "$g" -lt 20 ]]; do
-        [[ -f "$rescue_pid" ]] && kill -0 "$(cat "$rescue_pid")" 2>/dev/null || { gone=0; break; }
+        [[ -f "$rescue_pid" ]] && kill -0 "$(cat "$rescue_pid")" 2>/dev/null || break
         sleep 1; g=$((g + 1))
     done
-    [[ "$gone" -ne 0 && -f "$rescue_pid" ]] && kill "$(cat "$rescue_pid")" 2>/dev/null
+    # Whatever happened above, make SURE the process is gone before returning:
+    # a dying qemu still holds the write lock on the target disk, and the next
+    # boot fails with 'Failed to get "write" lock' (bitten on 2026-08-25).
+    banco_stop_pid "$rescue_pid"
     rm -rf "$work"
     return "$rc"
 }

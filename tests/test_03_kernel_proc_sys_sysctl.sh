@@ -54,10 +54,13 @@ assert "the LIVE kernel still has the value on the fresh boot" \
 
 # --- 6. module roundtrip --------------------------------------------------------
 log_info "Module roundtrip: find a loadable module, load it, see it, unload it..."
-MOD=$($SSH 'for f in $(find /lib/modules/$(uname -r) -name "*.ko*" 2>/dev/null); do m=$(basename "$f" | sed "s/\.ko.*//"); lsmod | grep -q "^${m} " || { echo "$m"; break; }; done' 2>/dev/null | tr -d '\r\n ')
+# "Exists on disk" is not "loads": on the generic kernel (thousands of .ko) the
+# first file found can refuse to load (missing hardware, deps, lockdown — found
+# live, 2026-08-25). So candidates are TRIED until one actually loads: dummy
+# first (a software-only net module that always loads), then discovery.
+MOD=$($SSH 'for m in dummy $(find /lib/modules/$(uname -r) -name "*.ko*" 2>/dev/null | head -40 | sed "s|.*/||;s/\.ko.*//"); do lsmod | grep -q "^${m} " && continue; sudo modprobe "$m" 2>/dev/null && { echo "$m"; break; }; done' 2>/dev/null | head -1 | tr -d '\r\n ' || true)
 if [[ -n "$MOD" ]]; then
-    log_ok "found a loadable, not-yet-loaded module: $MOD"; PASS_COUNT=$((PASS_COUNT+1))
-    $SSH "sudo modprobe $MOD" >/dev/null 2>&1 || true
+    log_ok "found and loaded a module: $MOD"; PASS_COUNT=$((PASS_COUNT+1))
     assert "modprobe loaded it: it is in lsmod" bash -c "$SSH 'lsmod | grep -q \"^$MOD \"'"
     assert "and it appears under /sys/module" bash -c "$SSH 'test -d /sys/module/$MOD'"
     mi=$($SSH "modinfo $MOD 2>/dev/null | head -5" || true)
