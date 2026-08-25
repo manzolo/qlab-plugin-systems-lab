@@ -73,6 +73,26 @@ banco_reboot_guest() {
     $ssh_cmd "sudo systemctl reboot" >/dev/null 2>&1 || true
 }
 
+# Reboot and wait until we are provably on a NEW boot, not the old session that
+# lingers for a few seconds while services stop. The boot_id changes every boot,
+# so we capture it, reboot, and wait for SSH to answer with a DIFFERENT one.
+# Without this, a check that reads /proc/cmdline can race onto the pre-reboot
+# kernel and read stale state (learned on sys-01, 2026-08-25). Returns 0 once the
+# new boot is up, 1 on timeout.
+banco_reboot_wait_newboot() {
+    local ssh_cmd="$1" timeout="${2:-220}"
+    local before after waited=0
+    before="$($ssh_cmd 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null | tr -d '\r\n ')"
+    $ssh_cmd "sudo systemctl reboot" >/dev/null 2>&1 || true
+    sleep 8
+    while [[ "$waited" -lt "$timeout" ]]; do
+        after="$($ssh_cmd 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null | tr -d '\r\n ')"
+        if [[ -n "$after" && "$after" != "$before" ]]; then return 0; fi
+        sleep 4; waited=$((waited + 4))
+    done
+    return 1
+}
+
 # ---- booting the target under the bench's control -------------------------
 #
 # WHY the bench boots the target itself instead of `qlab run`: qlab's run does

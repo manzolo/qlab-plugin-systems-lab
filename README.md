@@ -44,14 +44,16 @@ drive the target through a small bench that keeps the *same* overlay across a po
 
 | ID | Chapter | Invariant |
 |----|---------|-----------|
-| sys-01 | How Linux really boots | the machine boots with a required kernel parameter, and you show where it was read |
-| **sys-02** | **Rescue mode & a broken boot** | **a seeded fault stops the boot; after repair the machine reaches login again, and the *cause* is gone** ✅ *encoded* |
+| **sys-01** | **How Linux really boots** | **the machine boots with a required kernel parameter (in /proc/cmdline after a real power-cycle), and the boot log shows it** ✅ *green* |
+| **sys-02** | **Rescue mode & a broken boot** | **a seeded fault stops the boot; after repair the machine reaches login again, and the *cause* is gone** ✅ *green* |
 | sys-03 | Kernel, modules, /proc, /sys, sysctl | a sysctl value is correct at runtime, persistent on disk, and still there after a reboot |
-| sys-04 | Partitions on virtual disks | a real GPT partition, mounted by UUID in fstab, survives a reboot |
+| **sys-04** | **Partitions on virtual disks** | **a real GPT partition, mounted by UUID in fstab, comes back by itself after a reboot** ✅ *green* |
 | sys-05 | LUKS & layered storage | with the volume closed, the data is unreadable (checked from the rescue system) |
 | sys-06 | Persistent networking | IP/route/DNS come back after a reboot, measured separately |
 | sys-07 | Diagnostics & performance | classify the bottleneck before fixing it |
 | sys-08 | Capstone: recover a machine that won't start | chained faults; the check boots the VM from cold |
+
+**MVP: sys-01, sys-02, sys-04 are green end-to-end on real VMs.**
 
 ## Quick start
 
@@ -70,5 +72,6 @@ qlab test systems-lab         # heavy: it power-cycles a real VM
 
 ## Status
 
-**v0.1 — sys-02 encoded and driven by the bench.** The recovery mechanism was proven by
-hand before being written here (see `STATO.md`). More chapters follow; see `BACKLOG.md`.
+**v0.2 — MVP green: sys-01, sys-02, sys-04 pass end-to-end on real VMs.** Each one seeds a
+change, power-cycles a real machine, and reads the verdict from the boot. See `STATO.md` for
+what was proven and the bugs the live runs found; `BACKLOG.md` for what's next.

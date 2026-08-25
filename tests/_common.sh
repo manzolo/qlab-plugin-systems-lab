@@ -38,8 +38,17 @@ TARGET_DATA="$PLUGIN_DIR/lab/systems-lab-data.qcow2"
 CIDATA_ISO="$PLUGIN_DIR/lab/cidata-target.iso"
 
 for f in "$BASE_IMAGE" "$SSH_KEY" "$TARGET_OVERLAY"; do
-    [[ -f "$f" ]] || { echo "ERROR: missing $f. Run 'qlab run systems-lab' once to provision the target, then 'qlab stop systems-lab'."; exit 1; }
+    [[ -f "$f" ]] || { echo "ERROR: missing $f. Run 'qlab run systems-lab' once to provision the target, then re-run the tests."; exit 1; }
 done
+
+# The bench drives the target's disk directly and needs exclusive access, so a
+# qlab-managed target must be stopped first. `qlab test` satisfies its own
+# "a VM must be running" guard because the target WAS running when it was invoked
+# (the guard checks before this script runs); we then release the disk here.
+if command -v qlab >/dev/null 2>&1; then
+    qlab stop systems-lab >/dev/null 2>&1 || true
+    sleep 2
+fi
 
 # Scratch space for bench serial logs and pidfiles.
 BENCH_DIR="$(mktemp -d)"

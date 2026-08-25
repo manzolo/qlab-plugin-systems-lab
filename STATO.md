@@ -1,6 +1,6 @@
 # STATO — systems-lab
 
-**v0.1 — scaffold del percorso Linux Systems, con l'invariante di sys-02 codificato.**
+**v0.2 — MVP verde: sys-01, sys-02, sys-04 passano end-to-end su VM vere.**
 Nato il 2026-08-25 come repo separato (decisione di Andrea), fratello di `cyber-lab`.
 Piano di famiglia: `GemelloDigitale/20_Progetti/linuxlab-percorsi.md`.
 
@@ -21,28 +21,42 @@ Piano di famiglia: `GemelloDigitale/20_Progetti/linuxlab-percorsi.md`.
   la **causa** è sparita, non solo il sintomo.
 - **`guide.md`, `README.md`** — la promessa e il passo-passo.
 
-## Cosa è provato, e come
+## Cosa è provato, e come — MVP verde su VM vere il 2026-08-25
 
-- ✅ **sys-02 è VERDE end-to-end su VM vere — 10/10 asserzioni, il 2026-08-25.** Non «il
-  codice sembra giusto»: `tests/run_all.sh` dalla copia installata ha eseguito il giro intero
-  — baseline pulita → guasto fstab → **il boot si ferma in emergency (letto dalla seriale) e
-  SSH cade** → riparazione dalla VM di soccorso → lo **stesso** overlay riavviato torna al
-  `login:` → la **causa** è sparita, non solo il sintomo. Verde riprodotto: *un verde non
-  riprodotto non vale*, e questo lo è.
+Non «il codice sembra giusto»: ogni capitolo semina un cambiamento, **power-cycla una macchina
+vera** e legge il verdetto dal boot. Verde riprodotto — *un verde non riprodotto non vale*.
+
+- ✅ **sys-01 «come si avvia davvero Linux» — 8/8.** Aggiunge un parametro kernel via drop-in
+  `grub.d`, riavvia, e il parametro è in **`/proc/cmdline`** dopo un boot **nuovo** (boot_id
+  cambiato, non la sessione vecchia), confermato anche dal boot log.
+- ✅ **sys-02 «recupera una macchina che non parte» — 10/10.** Guasto fstab → il boot si ferma
+  in emergency (seriale) e SSH cade → riparazione dalla VM di soccorso → lo **stesso** overlay
+  riavviato torna al `login:` → la **causa** è sparita, non solo il sintomo.
+- ✅ **sys-04 «partizioni su dischi virtuali» — 11/11.** GPT reale su `/dev/vdb`, filesystem,
+  mount **per UUID** in fstab (con `nofail`), riavvio → il mount **torna da solo** ed è il
+  device con quell'UUID (identità, non lettera).
 - **Sintassi** di tutti gli script: OK (`bash -n`).
 
-## Due bug trovati solo bootando (la lezione del progetto, dal vivo)
+## Bug trovati solo bootando (la lezione del progetto, dal vivo)
 
-Il collaudo ha ripagato subito, trovando due difetti che nessuna rilettura del codice mostrava:
+Il collaudo ha ripagato a ogni capitolo, trovando difetti che nessuna rilettura del codice
+mostrava — che è *esattamente* ciò che questo lab insegna:
 
 1. **La VM di soccorso bootava senza cloud-init** → niente utente `labuser`, niente chiave,
-   `sshd` non partiva («Failed to start OpenBSD Secure Shell server»). Mancava la cidata ISO
-   alla soccorso. → `banco_rescue_run` e `rescue.sh` ora la passano.
-2. **Un `runcmd` con `\$(findmnt ...)` era un escape YAML invalido** (`found unknown escape
-   character '$'`): cloud-init scartava **tutto** lo user-data del target → niente chiave,
-   SSH rifiutato. L'hostname arrivava dal **meta-data**, ecco perché sembrava provisionato a
-   metà. La sintassi shell era «perfetta»; solo il boot ha rivelato che non lo era — che è
-   esattamente ciò che questo lab insegna. → `runcmd` rimosso (la label del disco è sys-04).
+   `sshd` non partiva. Mancava la cidata ISO. → `banco_rescue_run` e `rescue.sh` la passano.
+2. **Un `runcmd` con `\$(findmnt ...)` era un escape YAML invalido**: cloud-init scartava
+   **tutto** lo user-data del target → SSH rifiutato, mentre l'hostname (dal meta-data) faceva
+   sembrare la macchina a posto. → `runcmd` rimosso.
+3. **La corsa del reboot** (sys-01): dopo `reboot`, sshd resta su qualche secondo e un check
+   si riaggancia alla **sessione vecchia**, leggendo lo stato pre-reboot. → `banco_reboot_wait_newboot`
+   aspetta il cambio di **`boot_id`**: legge solo quando siamo provabilmente su un boot nuovo.
+4. **Il drop-in `grub.d` che vince** (sys-01): la cloud image ha
+   `/etc/default/grub.d/50-cloudimg-settings.cfg` che **sovrascrive** `GRUB_CMDLINE_LINUX_DEFAULT`
+   *dopo* `/etc/default/grub` — editare il file principale non ha effetto (il cmdline attivo non
+   porta nemmeno il «quiet splash» del file principale). → il parametro va messo in un drop-in
+   `99-lab.cfg` che gira per ultimo. È diventato un **punto didattico di sys-01**.
+5. **`dmesg` ristretto** (sys-01): `kernel.dmesg_restrict` → serve `sudo` per leggere la riga
+   `Command line` dal log del kernel.
 
 ## Trappole già pagate (dalle misure, da non ripagare)
 

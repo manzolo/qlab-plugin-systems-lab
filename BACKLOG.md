@@ -14,22 +14,19 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
       attacca solo l'overlay (disco rotto = `/dev/vdb`). Quando la soccorso monterà anche il
       disco dati, ancorare per label/serial, non per lettera — trappola PARTUUID applicata.
 
-## sys-01 — Come si avvia davvero Linux (MVP con sys-02)
+## MVP — FATTO
 
-- [ ] Invariante: la macchina boota con un **parametro kernel richiesto dal seme** e lo
-      studente dimostra **dove** l'ha letto (`/proc/cmdline`, `journalctl -b`). Il seme sceglie
-      il parametro (es. un `sysctl` via cmdline o un `systemd.unit=`), così non è copiabile.
-- [ ] Materia da mostrare, non solo dichiarare: `dmesg`, `journalctl -b`, il menu GRUB.
-
-## sys-04 — Partizioni su dischi virtuali (chiude l'MVP)
-
-- [ ] Invariante: GPT reale su `/dev/vdb`, filesystem dal seme, mount **per UUID** in fstab,
-      presente dopo reboot. Riusa il disco dati già attaccato dal `run.sh`.
-- [ ] È qui che la lezione "identità, non ordine di scansione" diventa esercizio.
+- [x] ✅ **sys-01 «come si avvia davvero Linux» — 8/8 verde.** Parametro kernel via drop-in
+      `grub.d`, presente in `/proc/cmdline` dopo un boot nuovo. Insegna anche la trappola del
+      drop-in cloud-image che sovrascrive `/etc/default/grub`.
+- [x] ✅ **sys-02 «recupera una macchina che non parte» — 10/10 verde.**
+- [x] ✅ **sys-04 «partizioni su dischi virtuali» — 11/11 verde.** GPT + mount per UUID che
+      sopravvive al reboot, per identità e non per lettera.
 
 ## Capstone MVP
 
 - [ ] sys-08 ridotto: fstab rotto **+** modulo/mount concatenati; il check parte da VM spenta.
+      Riusa `banco_boot_target` + oracolo seriale + `banco_rescue_run`, tutti già verdi.
 
 ## Banco — capacità ancora da irrobustire
 
