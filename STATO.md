@@ -1,8 +1,9 @@
 # STATO — systems-lab
 
-**v0.5 — sette capitoli verdi end-to-end su VM vere: sys-01…sys-06 e il capstone sys-08.
-Manca solo sys-07.** Dalla v0.5 il target usa l'**immagine cloud standard** (kernel
-`-virtual`), non la minimal: il suo `linux-kvm` non ha dm-crypt (vedi bug 8).
+**v0.6 — il percorso è completo: tutti e otto i capitoli verdi end-to-end su VM vere**
+(sys-08 nella forma ridotta; il capstone pieno è la crescita che resta). Dalla v0.5 il target
+usa l'**immagine cloud standard** (kernel `-virtual`), non la minimal: il suo `linux-kvm` non
+ha dm-crypt (vedi bug 8).
 Nato il 2026-08-25 come repo separato (decisione di Andrea), fratello di `cyber-lab`.
 Piano di famiglia: `GemelloDigitale/20_Progetti/linuxlab-percorsi.md`.
 
@@ -55,6 +56,12 @@ vera** e legge il verdetto dal boot. Verde riprodotto — *un verde non riprodot
   l'indirizzo messo con `ip addr add` **evapora** al power-cycle; lo stesso indirizzo + route
   statica + DNS via **netplan/systemd-networkd** tornano da soli — e si misurano
   **separatamente** dal sistema vivo (`ip addr`, `ip route`, `resolvectl`), mai dal file.
+- ✅ **sys-07 «diagnostica e prestazioni» — 10/10, verde al primo colpo.** Tre classi di
+  guasto (CPU-bound, memoria esaurita, disco pieno) in ordine ruotato dal seme: il check
+  pretende **prima la classificazione giusta dalle misure vive** (mai dal seme), poi una cura
+  **guidata dalle misure** (il pid più affamato, il file più grosso — mai "il nome che
+  conosco"), poi di nuovo «sano» misurato. E il classificatore è provato nei due sensi:
+  su macchina sana deve tacere.
 - ✅ **sys-08 capstone «recupera una macchina che non parte» — 16/16.** Guasti **concatenati**:
   un fstab rotto che blocca il boot nasconde un servizio disabilitato. Il check parte da una
   macchina **davvero spenta** (QEMU uscito su poweroff): boot a freddo → emergency; soccorso →

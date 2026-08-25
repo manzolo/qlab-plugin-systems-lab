@@ -52,10 +52,11 @@ drive the target through a small bench that keeps the *same* overlay across a po
 | **sys-04** | **Partitions on virtual disks** | **a real GPT partition, mounted by UUID in fstab, comes back by itself after a reboot** ✅ *green* |
 | **sys-05** | **LUKS & layered storage** | **from the attacker's viewpoint (the rescue with the disks in hand): a chmod-600 file on the clear disk IS readable, the LUKS secret appears NOWHERE in the raw bytes — and the owner, with the passphrase, loses nothing** ✅ *green* |
 | **sys-06** | **Persistent networking** | **act 1: an address set with ip(8) EVAPORATES across a power-cycle; act 2: the same address, a route and a DNS server via netplan/systemd-networkd (matched by MAC) come back by themselves — measured separately, live** ✅ *green* |
-| sys-07 | Diagnostics & performance | classify the bottleneck before fixing it |
+| **sys-07** | **Diagnostics & performance** | **the machine has ONE of several faults (cpu / memory / full disk): the check demands the right classification from live metrics FIRST, then a measurement-driven cure, then 'sano' again — and the classifier must stay silent on a healthy machine** ✅ *green* |
 | **sys-08** | **Capstone: recover a machine that won't start** | **chained faults (a boot-blocker hiding a dead service); the check starts from a POWERED-OFF machine and ends with everything alive on a fresh boot** ✅ *green* |
 
-**Green end-to-end on real VMs: sys-01 through sys-06, and sys-08. Only sys-07 remains.**
+**All eight chapters are green end-to-end on real VMs** (sys-08 in its reduced form — the
+full-blown capstone with more chained faults is the remaining growth).
 
 ## Quick start
 
@@ -74,7 +75,7 @@ qlab test systems-lab         # heavy: it power-cycles a real VM
 
 ## Status
 
-**v0.5 — seven chapters green: sys-01 through sys-06 plus the sys-08 capstone pass
-end-to-end on real VMs.** Each one seeds a change, power-cycles a real machine, and reads the
-verdict from the boot; the capstone starts from a machine that is actually powered off. See
-`STATO.md` for what was proven and the bugs the live runs found; `BACKLOG.md` for what's next.
+**v0.6 — the track is complete: all eight chapters pass end-to-end on real VMs.** Each one
+seeds a change and reads the verdict from the living system or from a real power-cycle; the
+capstone starts from a machine that is actually powered off. See `STATO.md` for what was
+proven and the bugs the live runs found; `BACKLOG.md` for what's next.

@@ -47,9 +47,11 @@ banco_reboot_guest "$SSH"
 
 # --- 3. the serial oracle: emergency, and SSH down --------------------------
 log_info "Reading the serial console for the broken boot..."
-# Wait for the emergency markers to appear AFTER the reboot point.
+# Wait for the emergency markers to appear AFTER the reboot point. 240s, not
+# less: shutdown + GRUB + kernel boot + systemd's own 90s device timeout add up
+# to ~140s on a quiet host, and a loaded one blew a 150s budget (2026-08-25).
 ok_emerg=1
-for _ in $(seq 1 50); do
+for _ in $(seq 1 80); do
     tail -n +"$((before_lines+1))" "$TLOG" | grep -aqE "$BANCO_EMERGENCY_RE" && { ok_emerg=0; break; }
     sleep 3
 done

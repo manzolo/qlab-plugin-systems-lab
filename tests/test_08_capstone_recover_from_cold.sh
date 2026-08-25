@@ -76,8 +76,10 @@ assert "the machine powered off by itself (QEMU exited: it is COLD)" \
 log_info "Cold boot #1: the broken machine..."
 : > "$TLOG"
 banco_boot_target "$TARGET_OVERLAY" "$TARGET_DATA" "$TLOG" "$TPID" "$TPORT"
+# 240s for the same reason as sys-02: GRUB + kernel + systemd's 90s device
+# timeout can exceed 150s on a loaded host.
 ok_emerg=1
-for _ in $(seq 1 50); do
+for _ in $(seq 1 80); do
     grep -aqE "$BANCO_EMERGENCY_RE" "$TLOG" && { ok_emerg=0; break; }
     sleep 3
 done

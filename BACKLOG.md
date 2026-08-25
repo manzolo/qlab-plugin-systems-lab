@@ -57,7 +57,9 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
 - [x] ✅ **sys-06 (rete persistente) — 12/12 verde alla prima uscita completa.** Atto 1: lo
       stato di ip(8) evapora; atto 2: netplan/networkd torna da solo (indirizzo, route, DNS
       misurati separatamente). Seconda NIC su LAN isolata, match per MAC.
-- [ ] sys-07 (diagnostica: classificare prima di curare), sys-08 pieno.
+- [x] ✅ **sys-07 (diagnostica) — 10/10 verde al primo colpo.** Tre classi, classificazione
+      dalle misure, cura guidata dalle misure, classificatore muto su macchina sana.
+- [ ] sys-08 pieno (più guasti concatenati: modulo/rete/firewall oltre a fstab+servizio).
 
 ## Superficie/vetrina (quando l'MVP è online)
 
