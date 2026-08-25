@@ -1,6 +1,6 @@
 # STATO — systems-lab
 
-**v0.3 — MVP + capstone verdi: sys-01, sys-02, sys-04 e sys-08 passano end-to-end su VM vere.**
+**v0.4 — cinque capitoli verdi end-to-end su VM vere: sys-01, sys-02, sys-03, sys-04, sys-08.**
 Nato il 2026-08-25 come repo separato (decisione di Andrea), fratello di `cyber-lab`.
 Piano di famiglia: `GemelloDigitale/20_Progetti/linuxlab-percorsi.md`.
 
@@ -35,6 +35,12 @@ vera** e legge il verdetto dal boot. Verde riprodotto — *un verde non riprodot
 - ✅ **sys-04 «partizioni su dischi virtuali» — 11/11.** GPT reale su `/dev/vdb`, filesystem,
   mount **per UUID** in fstab (con `nofail`), riavvio → il mount **torna da solo** ed è il
   device con quell'UUID (identità, non lettera).
+- ✅ **sys-03 «kernel, /proc, /sys e sysctl» — 13/13, verde al primo colpo.** Valore
+  `kernel.pid_max` dal seme: vivo a runtime (`sysctl -w`), persistente (`/etc/sysctl.d`),
+  **ancora vivo dopo un power-cycle vero**; mostrata l'equivalenza `sysctl` ↔ `/proc/sys`.
+  E il giro moduli regge: il kernel `-kvm` **ha** moduli caricabili (trovato `affs`
+  dinamicamente, caricato, visto in `lsmod` e `/sys/module`, `modinfo`, scaricato) — il
+  dubbio "kernel minimale senza .ko" era infondato, misurato e chiuso.
 - ✅ **sys-08 capstone «recupera una macchina che non parte» — 16/16.** Guasti **concatenati**:
   un fstab rotto che blocca il boot nasconde un servizio disabilitato. Il check parte da una
   macchina **davvero spenta** (QEMU uscito su poweroff): boot a freddo → emergency; soccorso →

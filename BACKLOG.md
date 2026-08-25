@@ -43,9 +43,11 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
 
 ## Più avanti (Systems completo)
 
-- [ ] sys-03 (kernel/moduli/sysctl persistente), sys-05 (LUKS: dati illeggibili a volume
-      chiuso, verificato dalla soccorso), sys-06 (rete persistente con systemd-networkd),
-      sys-07 (diagnostica: classificare prima di curare), sys-08 pieno.
+- [x] ✅ **sys-03 (kernel/moduli/sysctl persistente) — 13/13 verde.** Sysctl dal seme vivo
+      dopo power-cycle; giro moduli con scoperta dinamica (il kernel -kvm ha i .ko).
+- [ ] sys-05 (LUKS: dati illeggibili a volume chiuso, verificato dalla soccorso — cryptsetup
+      è già nel provisioning), sys-06 (rete persistente con systemd-networkd), sys-07
+      (diagnostica: classificare prima di curare), sys-08 pieno.
 
 ## Superficie/vetrina (quando l'MVP è online)
 

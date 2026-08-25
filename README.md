@@ -46,14 +46,14 @@ drive the target through a small bench that keeps the *same* overlay across a po
 |----|---------|-----------|
 | **sys-01** | **How Linux really boots** | **the machine boots with a required kernel parameter (in /proc/cmdline after a real power-cycle), and the boot log shows it** ✅ *green* |
 | **sys-02** | **Rescue mode & a broken boot** | **a seeded fault stops the boot; after repair the machine reaches login again, and the *cause* is gone** ✅ *green* |
-| sys-03 | Kernel, modules, /proc, /sys, sysctl | a sysctl value is correct at runtime, persistent on disk, and still there after a reboot |
+| **sys-03** | **Kernel, modules, /proc, /sys, sysctl** | **a sysctl value is live, persisted, and still live after a real power-cycle; a module is loaded, seen in lsmod and /sys/module, and unloaded** ✅ *green* |
 | **sys-04** | **Partitions on virtual disks** | **a real GPT partition, mounted by UUID in fstab, comes back by itself after a reboot** ✅ *green* |
 | sys-05 | LUKS & layered storage | with the volume closed, the data is unreadable (checked from the rescue system) |
 | sys-06 | Persistent networking | IP/route/DNS come back after a reboot, measured separately |
 | sys-07 | Diagnostics & performance | classify the bottleneck before fixing it |
 | **sys-08** | **Capstone: recover a machine that won't start** | **chained faults (a boot-blocker hiding a dead service); the check starts from a POWERED-OFF machine and ends with everything alive on a fresh boot** ✅ *green* |
 
-**MVP + capstone: sys-01, sys-02, sys-04 and sys-08 are green end-to-end on real VMs.**
+**Green end-to-end on real VMs: sys-01, sys-02, sys-03, sys-04 and sys-08.**
 
 ## Quick start
 
@@ -72,7 +72,7 @@ qlab test systems-lab         # heavy: it power-cycles a real VM
 
 ## Status
 
-**v0.3 — MVP + capstone green: sys-01, sys-02, sys-04, sys-08 pass end-to-end on real VMs.**
-Each one seeds a change, power-cycles a real machine, and reads the verdict from the boot;
-the capstone starts from a machine that is actually powered off. See `STATO.md` for what was
-proven and the bugs the live runs found; `BACKLOG.md` for what's next.
+**v0.4 — five chapters green: sys-01, sys-02, sys-03, sys-04, sys-08 pass end-to-end on real
+VMs.** Each one seeds a change, power-cycles a real machine, and reads the verdict from the
+boot; the capstone starts from a machine that is actually powered off. See `STATO.md` for what
+was proven and the bugs the live runs found; `BACKLOG.md` for what's next.
