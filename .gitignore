@@ -1,0 +1,4 @@
+lab/*.qcow2
+lab/*.iso
+lab/user-data-*
+lab/meta-data-*
