@@ -68,3 +68,14 @@ sola che distingue un corso da un poligono (lezione di SshLab/CyberLab).
 - [ ] Card "Linux Systems" già presente nel sommario e nei README di LinuxLab (fatto il
       2026-08-25, Piano A): quando l'MVP gira, aggiungere il link e togliere "in costruzione".
 - [ ] Riga nel README di qlab (tabella plugin) e nella vetrina www.manzolo.it, come cyber-lab.
+
+## Modalità interattiva (renderli usabili da una persona)
+
+- [x] ✅ **Framework `qlab-lab` + pilota sys-02** (2026-08-26): seed/check/solve
+      split, seme host-side, verde end-to-end simulando lo studente.
+- [ ] Portare gli altri capitoli in `interactive/chapters/`: sys-01, 03, 04, 05,
+      06, 07, 08 (riusando i seed/check già scritti nei `tests/test_*`).
+- [ ] Idem per container-lab (una modalità analoga, senza soccorso: il lifecycle
+      è a livello Docker).
+- [ ] Un dispatcher `qlab lab <plugin> ...` nel core (oggi si lancia
+      `bash interactive/lab.sh`), quando la forma è stabile su più capitoli.

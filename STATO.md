@@ -159,3 +159,22 @@ mostrava — che è *esattamente* ciò che questo lab insegna:
   esecuzione, mentre questi test guidano i boot da soli e vogliono il target **fermo**. Per
   ora si lancia `bash .qlab/plugins/systems-lab/tests/run_all.sh` (dalla copia installata, dove
   `lab/` ha il disco provisionato). Adattare la guardia o il runner è il prossimo passo.
+
+## Fatto il 2026-08-26 — modalità interattiva `qlab-lab`, pilota sys-02
+
+Nasce la strada «renderli usabili da una persona». `interactive/lab.sh` +
+`interactive/chapters/<ch>.sh`: il monolite `qlab test` (semina+ripara+verifica
+in un colpo) è spezzato in **seed / check / solve**, con lo studente in mezzo.
+Il seme è nascosto **host-side** (`lab/.lab-seed-<ch>`, fuori dalla VM): dalla
+soccorso non lo leggi, lo scopri. Riusa il banco (boot persistente, oracolo
+seriale, soccorso con hotplug QMP).
+
+**Pilota sys-02 verde end-to-end** (simulazione dello studente il 2026-08-26):
+`start` semina un UUID rotto casuale e manda la macchina in emergency; `check`
+subito dopo **fallisce** giustamente; `solve` (dalla soccorso) ripara; `check`
+**passa** perché la VM da spenta arriva al login **e** quella riga rotta
+specifica non è più in fstab (mascherare non basta). Anti-trucco reale.
+
+Comandi: `list | start <ch> | rescue | check <ch> | hint <ch> [n] | solve <ch>
+| reset <ch> | stop`. Resta da portare la ricetta sugli altri capitoli (uno
+`chapters/<ch>.sh` ciascuno, riusando i seed/check dei test).

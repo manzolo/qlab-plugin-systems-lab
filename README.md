@@ -68,6 +68,25 @@ qlab stop systems-lab
 qlab test systems-lab         # heavy: it power-cycles a real VM
 ```
 
+## Interactive mode — a lab a person actually takes
+
+`qlab test` seeds a fault, fixes it and checks, all in one breath: right for CI, not for a
+learner. The interactive driver splits the three moves so a **human sits in the middle**, and
+hides the seed **host-side** (the student, even from the rescue, cannot read the answer — only
+discover it). Pilot: **sys-02**.
+
+```bash
+bash interactive/lab.sh list
+bash interactive/lab.sh start sys-02    # seed a (hidden, random) fault, break the machine
+bash interactive/lab.sh rescue          # a rescue system with the broken disk on /dev/vdb
+#   ...fix /etc/fstab in there, then `sudo poweroff`
+bash interactive/lab.sh check sys-02    # boots the machine from cold and grades it
+bash interactive/lab.sh hint sys-02 2   # progressive hints
+```
+
+The check does not read a file: it boots the VM from powered-off and demands it reaches
+login **and** that the *specific* seeded bad line is gone — masking the symptom does not pass.
+
 ## Credentials
 
 `labuser` / `labpass` (passwordless sudo).
