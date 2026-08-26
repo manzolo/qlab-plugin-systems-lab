@@ -88,7 +88,8 @@ cmd_start() {
     banco_wait_ssh "$ssh" 200 || { echo "La macchina non si è avviata pulita: prova 'qlab run systems-lab' e riprova."; lab_stop_target; exit 1; }
     ch_seed "$ssh"
     if [[ "${CH_NEEDS_RESCUE:-0}" = 1 ]]; then
-        # break it: reboot into the fault, confirm on the serial, then power off.
+        # Broken-boot chapter: reboot into the fault, confirm on the serial, then
+        # power off — the student cannot SSH in, they use `qlab-lab rescue`.
         local before; before=$(wc -l < "$TARGET_LOG")
         banco_reboot_guest "$ssh"
         if ! ( w=0; while [[ $w -lt 200 ]]; do tail -n +"$((before+1))" "$TARGET_LOG" | grep -aqE "$BANCO_EMERGENCY_RE" && exit 0; sleep 3; w=$((w+3)); done; exit 1 ); then
@@ -96,8 +97,20 @@ cmd_start() {
         fi
         lab_stop_target
     fi
+    # In-place chapters leave the machine RUNNING: the fault is on the live system
+    # and the student fixes it from inside via `qlab-lab shell`.
     echo ""; ch_brief; echo ""
+    if [[ "${CH_NEEDS_RESCUE:-0}" != 1 ]]; then
+        echo "  Entra nella macchina:  qlab-lab shell"
+    fi
     echo "  Quando pensi di aver risolto:  qlab-lab check $ch"
+}
+
+cmd_shell() {   # a shell on the running bench target (in-place chapters)
+    [[ -f "$TARGET_PID" ]] && kill -0 "$(cat "$TARGET_PID")" 2>/dev/null || {
+        echo "Nessuna macchina in esecuzione. Avvia un capitolo: qlab-lab start <capitolo>"; exit 1; }
+    exec ssh -i "$SSH_KEY" -p "$LAB_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o IdentitiesOnly=yes -o LogLevel=ERROR labuser@127.0.0.1
 }
 
 # lab_rescue [--run "cmd"]  — target must be stopped; boot rescue, hot-plug the
@@ -133,8 +146,11 @@ lab_rescue() {
 cmd_check() {
     local ch="$1"; _load_chapter "$ch"
     echo "▶ Verifico «$CH_TITLE» ($ch)…"
-    if ch_check; then echo ""; echo "  ✅ SUPERATO."; lab_stop_target; return 0
-    else echo ""; echo "  ❌ Non ancora. Riprova, o: qlab-lab hint $ch"; lab_stop_target; return 1; fi
+    # ch_check decides whether to boot fresh (broken-boot chapters) or inspect the
+    # already-running target (in-place chapters). We don't stop it: the student may
+    # want to keep working, or retry. `qlab-lab stop` powers off when done.
+    if ch_check; then echo ""; echo "  ✅ SUPERATO."; return 0
+    else echo ""; echo "  ❌ Non ancora. Riprova, o: qlab-lab hint $ch"; return 1; fi
 }
 
 cmd_solve() {   # reference fix — for checking the lab itself, not for students
@@ -144,7 +160,10 @@ cmd_solve() {   # reference fix — for checking the lab itself, not for student
         echo "▶ Applico la soluzione di riferimento dalla soccorso…"
         lab_rescue --run "$fix"
     else
-        echo "Questo capitolo non ha una soluzione da soccorso."; return 1
+        # In-place: run the reference cure on the running target.
+        local ssh; ssh="$(banco_ssh "$SSH_KEY" "$LAB_PORT")"
+        echo "▶ Applico la soluzione di riferimento sulla macchina viva…"
+        ch_solve_inplace "$ssh"
     fi
 }
 
@@ -155,11 +174,12 @@ cmd_stop()  { lab_stop_target; echo "Macchine spente."; }
 case "${1:-}" in
     list)   cmd_list ;;
     start)  cmd_start "${2:?uso: qlab-lab start <capitolo>}" ;;
+    shell)  cmd_shell ;;
     rescue) shift; lab_rescue "$@" ;;
     check)  cmd_check "${2:?uso: qlab-lab check <capitolo>}" ;;
     solve)  cmd_solve "${2:?uso: qlab-lab solve <capitolo>}" ;;
     hint)   cmd_hint "${2:?uso: qlab-lab hint <capitolo> [n]}" "${3:-1}" ;;
     reset)  cmd_reset "${2:?uso: qlab-lab reset <capitolo>}" ;;
     stop)   cmd_stop ;;
-    *) echo "uso: qlab-lab {list|start|rescue|check|solve|hint|reset|stop} [capitolo]"; exit 1 ;;
+    *) echo "uso: qlab-lab {list|start|shell|rescue|check|solve|hint|reset|stop} [capitolo]"; exit 1 ;;
 esac

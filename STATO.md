@@ -178,3 +178,23 @@ specifica non è più in fstab (mascherare non basta). Anti-trucco reale.
 Comandi: `list | start <ch> | rescue | check <ch> | hint <ch> [n] | solve <ch>
 | reset <ch> | stop`. Resta da portare la ricetta sugli altri capitoli (uno
 `chapters/<ch>.sh` ciascuno, riusando i seed/check dei test).
+
+### Aggiornamento 2026-08-26 (sera) — secondo stampo interattivo: in-place (sys-07)
+
+Aggiunta la **seconda forma** al framework `qlab-lab`: capitoli *in-place*, dove la macchina
+resta viva e lo studente ripara da dentro (`qlab-lab shell`), senza VM di soccorso. Nuovi nel
+driver: comando `shell` e il ramo in-place di `start`/`solve`. Pilota **sys-07**
+(`interactive/chapters/sys-07.sh`): il seme sceglie a caso la classe di guasto — CPU o disco
+pieno — e la nasconde host-side.
+
+Provato: la classe **disco è verde col ciclo completo** (start semina un loop-mount al 100%,
+`check` fallisce, `solve` libera il file giusto, `check` ✅ SUPERATO). La classe **cpu** (cura
+= `pkill` del processo, banale) **non è stata riprodotta verde stasera**: una VM *leaked* di un
+run precedente teneva la porta e il `SIGKILL` di pulizia ha innescato una corsa sul lock del
+qcow2 (overlay poi verificato sano, `qemu-img check` senza errori). È un intoppo
+d'infrastruttura, non del lab — da rifare a freddo quando si riprende il rollout.
+
+**Decisione (Andrea, 2026-08-26):** ci si ferma qui. I due stampi (soccorso: sys-02;
+in-place: sys-07/disco) sono provati e bastano a dimostrare che il modello regge; portare i
+17 capitoli restanti è lavoro meccanico e va in **nice-to-have** (vedi BACKLOG e il piano
+`GemelloDigitale/20_Progetti/linuxlab-percorsi.md`).
